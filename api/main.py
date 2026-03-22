@@ -7,12 +7,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from bookshelf_data import BookshelfStore, load_env_file
+from api.sync import sync_from_rss
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_env_file(ROOT_DIR / ".env")
 
 BOOKS_DATA_FILE = Path(os.getenv("BOOKS_DATA", "data/books.json"))
 LLM_CACHE_FILE = Path(os.getenv("LLM_CACHE_DATA", "data/llm_cache.json"))
+GOODREADS_USER_ID = os.getenv("GOODREADS_USER_ID", "")
 configured_origins = [
     origin.strip()
     for origin in os.getenv(
@@ -35,7 +37,7 @@ app = FastAPI(title="Bookshelf API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -62,6 +64,13 @@ async def get_recommendations() -> dict:
     if recommendations is None:
         raise HTTPException(status_code=404, detail="Recommendations are unavailable.")
     return recommendations
+
+
+@app.post("/api/sync")
+async def sync() -> dict:
+    if not GOODREADS_USER_ID:
+        raise HTTPException(status_code=500, detail="GOODREADS_USER_ID not set.")
+    return await sync_from_rss(GOODREADS_USER_ID, BOOKS_DATA_FILE)
 
 
 @app.get("/api/health")
