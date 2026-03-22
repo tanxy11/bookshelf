@@ -61,10 +61,10 @@ def default_llm_cache() -> dict[str, Any]:
     return {
         "books_hash": "",
         "generated_at": None,
-        "taste_profile": {"error": "Not generated yet."},
+        "taste_profile": {},
         "recommendations": {
-            "opus": {"model": None, "error": "Not generated yet."},
-            "gpt45": {"model": None, "error": "Not generated yet."},
+            "opus": {"model": None},
+            "gpt45": {"model": None},
         },
     }
 

@@ -13,7 +13,7 @@ load_env_file(ROOT_DIR / ".env")
 
 BOOKS_DATA_FILE = Path(os.getenv("BOOKS_DATA", "data/books.json"))
 LLM_CACHE_FILE = Path(os.getenv("LLM_CACHE_DATA", "data/llm_cache.json"))
-CORS_ORIGINS = [
+configured_origins = [
     origin.strip()
     for origin in os.getenv(
         "BOOKSHELF_CORS_ORIGINS",
@@ -21,6 +21,13 @@ CORS_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+dev_origins = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8010",
+    "http://127.0.0.1:8010",
+]
+CORS_ORIGINS = list(dict.fromkeys([*configured_origins, *dev_origins]))
 
 store = BookshelfStore(BOOKS_DATA_FILE, LLM_CACHE_FILE)
 
