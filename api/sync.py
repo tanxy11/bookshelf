@@ -170,15 +170,12 @@ def _merge(data: dict, rss_books_by_shelf: dict[str, list[dict]]) -> tuple[int, 
                     # Book moved shelves — remove from old, prepend to new
                     data["books"][old_shelf].pop(idx)
                     data["books"][shelf_key].insert(0, merged)
-                    # Rebuild indexes (indices shifted after pop)
-                    _rebuild_indexes(data, by_gid, by_key)
+                # Indexes store list positions, so any mutation can shift later matches.
+                _rebuild_indexes(data, by_gid, by_key)
                 updated += 1
             else:
                 data["books"][shelf_key].insert(0, rss_book)
-                # Update indexes for subsequent iterations
-                if gid:
-                    by_gid[gid] = (shelf_key, 0)
-                by_key[key] = (shelf_key, 0)
+                _rebuild_indexes(data, by_gid, by_key)
                 added += 1
 
     return added, updated
@@ -193,6 +190,37 @@ def _rebuild_indexes(data: dict, by_gid: dict, by_key: dict):
             if gid:
                 by_gid[gid] = (shelf_key, i)
             by_key[_book_key(book)] = (shelf_key, i)
+
+
+def _dedupe_shelf(books: list[dict]) -> list[dict]:
+    deduped: list[dict] = []
+    seen_gid: dict[str, int] = {}
+    seen_key: dict[tuple[str, str], int] = {}
+
+    for book in books:
+        gid = book.get("goodreads_id")
+        key = _book_key(book)
+
+        match_idx = seen_gid.get(gid) if gid else None
+        if match_idx is None:
+            match_idx = seen_key.get(key)
+
+        if match_idx is None:
+            deduped.append(book)
+            idx = len(deduped) - 1
+            if gid:
+                seen_gid[gid] = idx
+            seen_key[key] = idx
+            continue
+
+        merged = _merge_book(deduped[match_idx], book)
+        deduped[match_idx] = merged
+        merged_gid = merged.get("goodreads_id")
+        if merged_gid:
+            seen_gid[merged_gid] = match_idx
+        seen_key[_book_key(merged)] = match_idx
+
+    return deduped
 
 
 # ── Stats ──────────────────────────────────────────────────────────────────────
@@ -255,6 +283,9 @@ async def sync_from_rss(user_id: str, data_file: Path) -> dict:
     without_date = [b for b in data["books"]["read"] if not b.get("date_read")]
     with_date.sort(key=lambda b: b["date_read"], reverse=True)
     data["books"]["read"] = with_date + without_date
+
+    for shelf_key in ("read", "currently_reading", "to_read"):
+        data["books"][shelf_key] = _dedupe_shelf(data["books"][shelf_key])
 
     # Recompute stats
     data["stats"] = _compute_stats(data)
