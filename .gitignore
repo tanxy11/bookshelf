@@ -1,0 +1,18 @@
+# Raw Goodreads export (personal data)
+data/goodreads_library_export.csv
+
+# Generated files
+data/books.json
+site/data/books.json
+
+# Python
+__pycache__/
+*.pyc
+api/venv/
+
+# macOS
+.DS_Store
+
+# Environment
+.env
+*.env
