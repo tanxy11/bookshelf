@@ -3,12 +3,14 @@ data/goodreads_library_export.csv
 
 # Generated files
 data/books.json
+data/llm_cache.json
 site/data/books.json
 
 # Python
 __pycache__/
 *.pyc
 api/venv/
+.venv/
 
 # macOS
 .DS_Store

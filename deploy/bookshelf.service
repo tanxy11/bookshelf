@@ -6,9 +6,9 @@ After=network.target
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/opt/bookshelf-api
+WorkingDirectory=/var/www/book.tanxy.net
 EnvironmentFile=/etc/bookshelf.env
-ExecStart=/opt/bookshelf-api/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8001
+ExecStart=/var/www/book.tanxy.net/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8001
 Restart=on-failure
 RestartSec=5
 

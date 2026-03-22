@@ -1,49 +1,56 @@
+PYTHON    ?= python3
+VENV_DIR  ?= .venv
+VENV_PY   := $(VENV_DIR)/bin/python
+RUN_PYTHON := $(if $(wildcard $(VENV_PY)),$(VENV_PY),$(PYTHON))
 VPS_HOST  ?= root@134.199.239.64
-VPS_PATH  ?= /var/www/book.tanxy.net/
-API_PATH  ?= /opt/bookshelf-api/
+VPS_PATH  ?= /var/www/book.tanxy.net
+FORCE_LLM ?= 0
 
-.PHONY: parse dev deploy deploy-api deploy-nginx sync
+.PHONY: install parse llm llm-force build dev deploy
+
+install:
+	$(PYTHON) -m venv $(VENV_DIR)
+	$(VENV_PY) -m pip install --upgrade pip
+	$(VENV_PY) -m pip install -r api/requirements.txt
 
 parse:
-	python3 scripts/parse_goodreads.py \
-		--input  data/goodreads_library_export.csv \
+	$(RUN_PYTHON) scripts/parse_goodreads.py \
+		--input data/goodreads_library_export.csv \
 		--output data/books.json
-	mkdir -p site/data
-	cp data/books.json site/data/books.json
-	@echo "books.json copied to site/data/"
+
+llm:
+	$(RUN_PYTHON) scripts/generate_llm.py \
+		--books data/books.json \
+		--cache data/llm_cache.json
+
+llm-force:
+	$(RUN_PYTHON) scripts/generate_llm.py \
+		--books data/books.json \
+		--cache data/llm_cache.json \
+		--force
+
+build: parse
+ifeq ($(FORCE_LLM),1)
+	$(MAKE) llm-force
+else
+	$(MAKE) llm
+endif
 
 dev: parse
-	@echo "Serving at http://localhost:8000"
-	cd site && python3 -m http.server 8000
+	@echo "Serving site at http://localhost:8000 and API at http://127.0.0.1:8001"
+	@echo "Tip: run 'make install' first if uvicorn is missing."
+	@trap 'kill 0' EXIT INT TERM; \
+		$(RUN_PYTHON) -m uvicorn api.main:app --host 127.0.0.1 --port 8001 --reload & \
+		cd site && $(RUN_PYTHON) -m http.server 8000
 
-# Deploy static frontend only
-deploy: parse
-	rsync -avz --delete site/ $(VPS_HOST):$(VPS_PATH)
-	ssh $(VPS_HOST) 'chown -R www-data:www-data $(VPS_PATH)data/'
-	@echo "Deployed frontend to $(VPS_HOST):$(VPS_PATH)"
-
-# Deploy + set up the FastAPI backend (run once, or on API changes)
-deploy-api:
-	ssh $(VPS_HOST) 'mkdir -p $(API_PATH)'
-	rsync -avz api/ $(VPS_HOST):$(API_PATH)
-	ssh $(VPS_HOST) '\
-		cd $(API_PATH) && \
-		python3 -m venv venv && \
-		venv/bin/pip install -q -r requirements.txt'
-	scp deploy/bookshelf-api.service $(VPS_HOST):/etc/systemd/system/bookshelf-api.service
-	ssh $(VPS_HOST) '\
-		systemctl daemon-reload && \
-		systemctl enable bookshelf-api && \
-		systemctl restart bookshelf-api && \
-		systemctl status bookshelf-api --no-pager'
-	@echo ""
-	@echo "API deployed. Don't forget to set GOODREADS_USER_ID in /etc/bookshelf.env on the VPS."
-
-# Push updated nginx config and reload
-deploy-nginx:
-	scp deploy/nginx.conf $(VPS_HOST):/etc/nginx/sites-available/book.tanxy.net
-	ssh $(VPS_HOST) 'nginx -t && nginx -s reload'
-
-# Trigger an immediate RSS sync on the VPS
-sync:
-	ssh $(VPS_HOST) 'curl -s -X POST http://127.0.0.1:8001/api/sync | python3 -m json.tool'
+deploy: build
+	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/site $(VPS_PATH)/data $(VPS_PATH)/api $(VPS_PATH)/deploy'
+	rsync -avz --delete site/ $(VPS_HOST):$(VPS_PATH)/site/
+	rsync -avz data/books.json data/llm_cache.json $(VPS_HOST):$(VPS_PATH)/data/
+	rsync -avz api/ $(VPS_HOST):$(VPS_PATH)/api/
+	rsync -avz bookshelf_data.py $(VPS_HOST):$(VPS_PATH)/
+	rsync -avz deploy/nginx.conf deploy/bookshelf.service $(VPS_HOST):$(VPS_PATH)/deploy/
+	rsync -avz .env.example README.md Makefile $(VPS_HOST):$(VPS_PATH)/
+	@echo "Deploy sync complete for $(VPS_HOST):$(VPS_PATH)"
+	@echo "If API code changed, restart the systemd service on the VPS:"
+	@echo "  sudo systemctl restart bookshelf"

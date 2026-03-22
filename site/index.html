@@ -6,44 +6,47 @@
   <title>Xinyu's Bookshelf</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:             #f4efe6;
-      --bg-wash:        #efe5d7;
-      --surface:        rgba(255, 251, 245, 0.78);
+      --bg: #f7f1e8;
+      --bg-deep: #eadfce;
+      --surface: rgba(255, 251, 246, 0.88);
       --surface-strong: #fffaf3;
-      --surface-muted:  #f1e8db;
-      --border:         rgba(122, 92, 62, 0.16);
-      --border-strong:  rgba(122, 92, 62, 0.28);
-      --muted:          #7c7267;
-      --text:           #261f18;
-      --accent:         #7a5c3e;
-      --accent-deep:    #5f4329;
-      --accent-lt:      #ede1d0;
-      --accent-soft:    #f6ede1;
-      --star-on:        #cf9550;
-      --star-off:       #d8c8b7;
-      --shadow-soft:    0 18px 50px rgba(61, 42, 22, 0.08);
-      --shadow-card:    0 12px 28px rgba(61, 42, 22, 0.12);
-      --radius:         14px;
-      --radius-sm:      10px;
+      --surface-alt: #f3ebdf;
+      --ink: #281f19;
+      --muted: #6b6158;
+      --muted-strong: #50473f;
+      --line: rgba(90, 67, 44, 0.14);
+      --line-strong: rgba(90, 67, 44, 0.26);
+      --accent: #8a5a2f;
+      --accent-soft: #f1e0ca;
+      --accent-deep: #643f1d;
+      --olive: #61664f;
+      --olive-soft: #e6ebdd;
+      --rose: #8d5552;
+      --rose-soft: #f1dfde;
+      --gold: #ca9349;
+      --shadow: 0 24px 64px rgba(58, 40, 21, 0.09);
+      --shadow-soft: 0 14px 30px rgba(58, 40, 21, 0.06);
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
     }
 
+    * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
-
     body {
-      font-family: 'Inter', system-ui, sans-serif;
+      margin: 0;
+      color: var(--ink);
+      font-family: "Manrope", system-ui, sans-serif;
+      line-height: 1.55;
       background:
-        radial-gradient(circle at top, rgba(255, 248, 238, 0.92), transparent 36%),
-        linear-gradient(180deg, #f8f4ed 0%, var(--bg) 35%, #efe7da 100%);
-      color: var(--text);
-      font-size: 15px;
-      line-height: 1.6;
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.8), transparent 28%),
+        radial-gradient(circle at 85% 10%, rgba(138, 90, 47, 0.12), transparent 24%),
+        linear-gradient(180deg, #fbf7f1 0%, var(--bg) 42%, var(--bg-deep) 100%);
       min-height: 100vh;
-      position: relative;
     }
 
     body::before {
@@ -51,75 +54,69 @@
       position: fixed;
       inset: 0;
       pointer-events: none;
-      background:
-        radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.5), transparent 28%),
-        radial-gradient(circle at 82% 18%, rgba(122, 92, 62, 0.08), transparent 24%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.26), transparent 55%);
-      opacity: 0.9;
+      opacity: 0.6;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+      background-size: 24px 24px;
+      mask-image: radial-gradient(circle at center, black 45%, transparent 92%);
     }
 
-    a { color: var(--accent-deep); text-decoration: none; }
+    a { color: inherit; text-decoration: none; }
 
-    .container {
-      max-width: 1380px;
+    .shell {
+      width: min(1240px, calc(100vw - 32px));
       margin: 0 auto;
-      padding: 0 24px;
+      padding: 24px 0 48px;
       position: relative;
       z-index: 1;
     }
 
-    /* ── Header ───────────────────────────────────────── */
-    header {
-      padding: 20px 0 10px;
-    }
-
-    header .container {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) auto;
-      gap: 28px;
-      align-items: start;
-      padding: 22px 24px;
-      border: 1px solid var(--border);
-      border-radius: 24px;
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
       background:
-        linear-gradient(145deg, rgba(255, 252, 246, 0.94), rgba(245, 236, 226, 0.84)),
-        var(--surface-strong);
-      box-shadow: var(--shadow-soft);
-      overflow: hidden;
+        linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(244, 235, 225, 0.84)),
+        var(--surface);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
     }
 
-    header .container::before {
+    header.panel {
+      padding: 28px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) auto;
+      gap: 24px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    header.panel::after {
       content: "";
       position: absolute;
-      inset: auto -60px -90px auto;
-      width: 220px;
-      height: 220px;
+      inset: auto -60px -70px auto;
+      width: 240px;
+      height: 240px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(122, 92, 62, 0.13), transparent 68%);
-      pointer-events: none;
+      background: radial-gradient(circle, rgba(138, 90, 47, 0.18), transparent 70%);
     }
 
-    .masthead-copy {
-      max-width: 720px;
-    }
-
-    .site-kicker {
+    .eyebrow {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 8px;
-      padding: 5px 10px;
-      border: 1px solid rgba(122, 92, 62, 0.18);
+      padding: 6px 12px;
       border-radius: 999px;
-      background: rgba(255, 250, 242, 0.75);
+      border: 1px solid rgba(138, 90, 47, 0.16);
+      background: rgba(255, 250, 244, 0.86);
       color: var(--accent-deep);
-      font-size: .62rem;
-      font-weight: 600;
-      letter-spacing: .12em;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
     }
 
-    .site-kicker::before {
+    .eyebrow::before {
       content: "";
       width: 6px;
       height: 6px;
@@ -127,477 +124,615 @@
       background: var(--accent);
     }
 
-    .site-title {
-      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
-      font-size: clamp(2rem, 4vw, 3rem);
-      font-weight: 600;
-      color: var(--text);
-      letter-spacing: -.03em;
-      line-height: 1;
-      max-width: none;
+    h1, h2, h3, h4 { margin: 0; font-family: "Fraunces", Georgia, serif; }
+
+    h1 {
+      margin-top: 12px;
+      font-size: clamp(2.6rem, 6vw, 4.6rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      max-width: 10ch;
     }
 
-    .site-subtitle {
-      margin-top: 6px;
-      max-width: 56ch;
+    .subtitle {
+      margin-top: 14px;
+      max-width: 58ch;
       color: var(--muted);
-      font-size: .92rem;
-      line-height: 1.6;
+      font-size: 0.98rem;
     }
 
     nav {
       display: flex;
-      gap: 10px;
       flex-wrap: wrap;
+      gap: 10px;
+      align-content: start;
       justify-content: flex-end;
-      align-self: start;
-      padding: 10px;
-      border: 1px solid rgba(122, 92, 62, 0.14);
-      border-radius: 999px;
-      background: rgba(255, 252, 247, 0.72);
-      backdrop-filter: blur(10px);
     }
+
     nav a {
-      padding: 7px 12px;
+      padding: 10px 14px;
       border-radius: 999px;
+      border: 1px solid rgba(90, 67, 44, 0.12);
+      background: rgba(255, 252, 247, 0.7);
       color: var(--muted);
-      font-size: .8rem;
-      letter-spacing: .02em;
-      transition: background .18s ease, color .18s ease, transform .18s ease;
+      font-size: 0.82rem;
+      transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease;
     }
+
     nav a:hover {
-      background: rgba(122, 92, 62, 0.08);
-      color: var(--accent-deep);
       transform: translateY(-1px);
-    }
-
-    /* ── Section ──────────────────────────────────────── */
-    .section { padding: 10px 0; }
-
-    .section .container {
-      padding: 30px 30px 32px;
-      border: 1px solid var(--border);
-      border-radius: 28px;
-      background:
-        linear-gradient(180deg, rgba(255, 252, 247, 0.86), rgba(247, 240, 230, 0.76)),
-        var(--surface);
-      box-shadow: var(--shadow-soft);
-      backdrop-filter: blur(10px);
-    }
-
-    .section-heading {
-      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
-      font-size: clamp(1.8rem, 3vw, 2.5rem);
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      letter-spacing: -.02em;
-    }
-
-    .section-count {
-      font-family: 'Inter', sans-serif;
-      font-size: .68rem;
-      font-weight: 600;
       color: var(--accent-deep);
-      background: rgba(122, 92, 62, 0.09);
-      border: 1px solid rgba(122, 92, 62, 0.14);
-      padding: 4px 10px;
-      border-radius: 999px;
-      letter-spacing: .08em;
-      text-transform: uppercase;
+      border-color: rgba(90, 67, 44, 0.24);
     }
 
-    /* ── Controls bar ─────────────────────────────────── */
-    .controls {
-      background:
-        linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(246, 238, 228, 0.88)),
-        var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 16px 18px;
-      margin-bottom: 22px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
-    }
-
-    .controls.is-collapsed {
-      display: none;
-    }
-
-    .controls-row {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .control-label {
-      font-size: .67rem;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .11em;
-      white-space: nowrap;
-      min-width: 40px;
-    }
-
-    .search-input {
-      flex: 1;
-      min-width: 180px;
-      max-width: 300px;
-      padding: 10px 12px;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.75);
-      font-size: .84rem;
-      font-family: inherit;
-      color: var(--text);
-      outline: none;
-      transition: border-color .15s, box-shadow .15s, background .15s;
-    }
-    .search-input:focus {
-      border-color: rgba(122, 92, 62, 0.42);
-      box-shadow: 0 0 0 4px rgba(122, 92, 62, 0.08);
-      background: rgba(255, 255, 255, 0.92);
-    }
-
-    .pill-group { display: flex; gap: 7px; flex-wrap: wrap; }
-
-    .pill {
-      padding: 6px 12px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      font-size: .76rem;
-      background: rgba(255, 255, 255, 0.68);
-      cursor: pointer;
-      color: var(--text);
-      transition: background .14s ease, border-color .14s ease, color .14s ease, transform .14s ease;
-      white-space: nowrap;
-      user-select: none;
-    }
-    .pill:hover {
-      border-color: var(--border-strong);
-      color: var(--accent-deep);
-      transform: translateY(-1px);
-    }
-    .pill.active {
-      background: var(--accent-deep);
-      border-color: var(--accent-deep);
-      color: #fff9f2;
-    }
-
-    .shelf-tags { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
-
-    .shelf-tag {
-      padding: 5px 10px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      font-size: .72rem;
-      background: rgba(255, 255, 255, 0.68);
-      cursor: pointer;
-      color: var(--muted);
-      transition: border-color .14s ease, color .14s ease, background .14s ease, transform .14s ease;
-      user-select: none;
-    }
-    .shelf-tag:hover {
-      border-color: var(--border-strong);
-      color: var(--accent-deep);
-      transform: translateY(-1px);
-    }
-    .shelf-tag.active {
-      background: rgba(122, 92, 62, 0.11);
-      border-color: rgba(122, 92, 62, 0.22);
-      color: var(--accent-deep);
-      font-weight: 600;
-    }
-
-    /* ── Book wall (dense read grid) ──────────────────── */
-    .book-wall {
+    main {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-      gap: 12px;
+      gap: 18px;
+      margin-top: 18px;
     }
 
-    .book-card {
-      display: block;
-      position: relative;
-      border: 0;
-      padding: 0;
-      background: none;
-      cursor: pointer;
-      text-align: left;
-      width: 100%;
-      appearance: none;
-      outline: none;
+    section.panel {
+      padding: 28px;
     }
 
-    .book-cover-shell {
+    .section-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .section-head h2 {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .section-meta {
+      max-width: 58ch;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .count-chip,
+    .model-chip,
+    .agree-badge,
+    .confidence-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .count-chip { color: var(--accent-deep); background: rgba(138, 90, 47, 0.08); }
+    .model-chip { color: var(--muted); background: rgba(255, 255, 255, 0.62); }
+    .agree-badge {
+      color: var(--olive);
+      background: var(--olive-soft);
+      border-color: rgba(97, 102, 79, 0.2);
+    }
+
+    .confidence-badge.high {
+      color: var(--accent-deep);
+      background: rgba(202, 147, 73, 0.16);
+      border-color: rgba(202, 147, 73, 0.3);
+    }
+
+    .confidence-badge.medium {
+      color: var(--muted-strong);
+      background: rgba(255, 255, 255, 0.72);
+      border-style: solid;
+    }
+
+    .confidence-badge.low {
+      color: var(--rose);
+      background: rgba(141, 85, 82, 0.08);
+      border-style: dashed;
+      border-color: rgba(141, 85, 82, 0.3);
+    }
+
+    .hero {
+      background:
+        linear-gradient(135deg, rgba(255, 248, 240, 0.94), rgba(239, 228, 214, 0.9)),
+        var(--surface);
       position: relative;
       overflow: hidden;
-      border-radius: var(--radius);
-      border: 1px solid rgba(74, 56, 37, 0.08);
-      background: linear-gradient(180deg, rgba(255,255,255,0.35), rgba(0,0,0,0));
-      box-shadow: 0 8px 22px rgba(44, 38, 32, 0.08);
-      transition: transform .18s ease, box-shadow .18s ease, filter .18s ease, border-color .18s ease;
     }
 
-    .book-card:hover .book-cover-shell,
-    .book-card:focus-visible .book-cover-shell,
-    .book-card.is-active .book-cover-shell {
-      transform: translateY(-4px);
-      box-shadow: 0 22px 36px rgba(44, 38, 32, 0.15);
-      filter: saturate(1.04);
-      border-color: rgba(122, 92, 62, 0.18);
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.6), transparent 26%),
+        linear-gradient(120deg, transparent 35%, rgba(138, 90, 47, 0.05) 100%);
+      pointer-events: none;
     }
 
-    /* Cover image */
-    .book-cover {
+    .hero-quote {
+      position: relative;
+      z-index: 1;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: clamp(1.9rem, 4vw, 3.4rem);
+      line-height: 1.06;
+      letter-spacing: -0.03em;
+      max-width: 16ch;
+      margin: 8px 0 22px;
+    }
+
+    .traits {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .trait-card,
+    .recommendation-card,
+    .book-card,
+    .current-card,
+    .toread-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 252, 247, 0.84);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .trait-card {
+      padding: 18px;
+    }
+
+    .trait-card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+
+    .trait-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .blind-spot {
+      position: relative;
+      z-index: 1;
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-radius: var(--radius-md);
+      background: rgba(97, 102, 79, 0.08);
+      border: 1px solid rgba(97, 102, 79, 0.18);
+      color: var(--muted-strong);
+    }
+
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .stat {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: rgba(255, 252, 247, 0.76);
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      display: block;
+      margin-top: 8px;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: clamp(1.4rem, 3vw, 2.2rem);
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+
+    .current-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+    }
+
+    .current-card {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .cover {
       width: 100%;
-      aspect-ratio: 2/3;
+      aspect-ratio: 2 / 3;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid rgba(90, 67, 44, 0.12);
+      background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.4), transparent 48%),
+        linear-gradient(135deg, #e8d8c2, #cda67f);
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+    }
+
+    .cover img {
+      width: 100%;
+      height: 100%;
       object-fit: cover;
       display: block;
     }
 
-    .book-cover-placeholder {
+    .cover-fallback {
       width: 100%;
-      aspect-ratio: 2/3;
-      background:
-        linear-gradient(180deg, rgba(255,255,255,0.34), transparent 42%),
-        radial-gradient(circle at top, rgba(255,255,255,0.2), transparent 46%),
-        linear-gradient(135deg, #f1e3d1, #ddc4a5);
+      height: 100%;
       display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 12px 10px 11px;
-      text-align: left;
-      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
-      font-size: .96rem;
-      line-height: 1.25;
-      font-weight: 600;
+      align-items: flex-end;
+      padding: 12px;
       color: var(--accent-deep);
-      overflow: hidden;
-      word-break: break-word;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 2rem;
+      font-weight: 700;
     }
 
-    .book-cover-placeholder-label {
-      align-self: flex-start;
-      padding: 4px 8px;
-      border: 1px solid rgba(95, 67, 41, 0.12);
-      border-radius: 999px;
-      background: rgba(255, 250, 243, 0.72);
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: .58rem;
-      font-weight: 600;
-      letter-spacing: .08em;
-      line-height: 1;
-      text-transform: uppercase;
-    }
-
-    .book-cover-placeholder-copy {
-      display: grid;
-      gap: 6px;
-      width: 100%;
-      margin-top: auto;
-    }
-
-    .book-cover-placeholder-title {
-      font-size: .98rem;
-      line-height: 1.18;
-      letter-spacing: -.01em;
-    }
-
-    .book-cover-placeholder-author {
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: .68rem;
-      line-height: 1.35;
-      color: rgba(38, 31, 24, 0.72);
-    }
-
-    .book-hovercard {
-      position: fixed;
-      z-index: 1000;
-      width: min(248px, calc(100vw - 24px));
-      padding: 14px 14px 13px;
-      border: 1px solid rgba(122, 92, 62, 0.18);
-      border-radius: 16px;
-      background:
-        linear-gradient(180deg, rgba(255,255,255,0.95), rgba(246, 238, 228, 0.96)),
-        var(--surface-strong);
-      box-shadow: 0 24px 48px rgba(44, 38, 32, 0.18);
-      backdrop-filter: blur(16px);
-      color: var(--text);
-      opacity: 0;
-      transform: translateY(8px) scale(.98);
-      transform-origin: top center;
-      transition: opacity .16s ease, transform .16s ease;
-      pointer-events: none;
-    }
-
-    .book-hovercard.is-visible {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-
-    .hovercard-title {
-      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
-      font-size: 1.18rem;
-      font-weight: 600;
+    .book-title {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 1.2rem;
       line-height: 1.1;
-      letter-spacing: -.01em;
+      letter-spacing: -0.02em;
     }
 
-    .hovercard-author {
+    .book-author {
       margin-top: 4px;
-      font-size: .76rem;
       color: var(--muted);
-      line-height: 1.4;
+      font-size: 0.92rem;
     }
 
-    .hovercard-meta {
-      display: grid;
-      gap: 6px;
+    .book-meta {
       margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted-strong);
+      font-size: 0.82rem;
     }
 
-    .hovercard-row {
+    .advisory {
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      background: rgba(141, 85, 82, 0.08);
+      border: 1px solid rgba(141, 85, 82, 0.16);
+      color: var(--rose);
+      font-size: 0.9rem;
+    }
+
+    .recommendation-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .recommendation-grid.single {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .recommendation-column {
+      display: grid;
+      gap: 14px;
+    }
+
+    .recommendation-column-header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .reasoning {
+      margin: 0;
+      padding: 18px;
+      border-left: 4px solid rgba(138, 90, 47, 0.28);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      background: rgba(255, 252, 247, 0.68);
+      color: var(--muted-strong);
+      font-style: italic;
+    }
+
+    .recommendation-card {
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .recommendation-top {
+      display: flex;
+      align-items: start;
       justify-content: space-between;
       gap: 10px;
     }
 
-    .hovercard-label {
-      font-size: .68rem;
-      text-transform: uppercase;
-      letter-spacing: .06em;
+    .recommendation-card p {
+      margin: 0;
+      color: var(--muted-strong);
+      font-size: 0.94rem;
+    }
+
+    .recommendation-footer {
+      margin-top: 14px;
       color: var(--muted);
-      white-space: nowrap;
+      font-size: 0.86rem;
     }
 
-    .hovercard-value {
-      font-size: .76rem;
-      color: var(--text);
-      text-align: right;
-    }
-
-    .overlay-stars {
-      display: flex;
-      gap: 1px;
-      font-size: .78rem;
-      line-height: 1;
-    }
-    .overlay-star-on  { color: var(--star-on); }
-    .overlay-star-off { color: var(--star-off); }
-
-    .hovercard-shelves {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      margin-top: 10px;
-    }
-
-    .hovercard-tag {
-      display: inline-flex;
-      align-items: center;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: rgba(122, 92, 62, 0.09);
-      color: var(--accent-deep);
-      font-size: .68rem;
-      line-height: 1.3;
-    }
-
-    /* ── Currently reading (secondary, smaller section) ─ */
-    .currently-grid {
+    .controls {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-      gap: 14px;
-    }
-
-    .currently-card {
-      position: relative;
-      border-radius: var(--radius);
-    }
-
-    /* ── To-read collapsible ──────────────────────────── */
-    .collapsible-toggle {
-      background: rgba(255, 250, 243, 0.7);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 9px 14px;
-      font-family: inherit;
-      font-size: .77rem;
-      cursor: pointer;
-      color: var(--muted);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: border-color .15s, color .15s, transform .15s, background .15s;
-    }
-    .collapsible-toggle:hover {
-      border-color: var(--border-strong);
-      color: var(--accent-deep);
-      transform: translateY(-1px);
-      background: rgba(255, 252, 247, 0.95);
-    }
-    .collapsible-toggle .chevron { font-size: .65rem; transition: transform .2s; }
-    .collapsible-toggle.open .chevron { transform: rotate(90deg); }
-
-    #read-controls-toggle {
+      gap: 12px;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: rgba(255, 252, 247, 0.76);
       margin-bottom: 18px;
     }
 
-    .collapsible-content { display: none; margin-top: 16px; }
-    .collapsible-content.open { display: block; }
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .controls-label {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      min-width: 54px;
+    }
+
+    .search {
+      flex: 1;
+      min-width: 180px;
+      padding: 12px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.8);
+      font: inherit;
+      color: var(--ink);
+      outline: none;
+    }
+
+    .search:focus {
+      border-color: rgba(138, 90, 47, 0.3);
+      box-shadow: 0 0 0 4px rgba(138, 90, 47, 0.08);
+    }
+
+    .pill-row,
+    .shelf-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill,
+    .shelf-pill,
+    .toggle {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.74);
+      color: var(--muted-strong);
+      cursor: pointer;
+      font: inherit;
+      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }
+
+    .pill,
+    .shelf-pill {
+      padding: 9px 13px;
+      font-size: 0.82rem;
+    }
+
+    .toggle {
+      padding: 10px 14px;
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .pill:hover,
+    .shelf-pill:hover,
+    .toggle:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+    }
+
+    .pill.active,
+    .shelf-pill.active {
+      background: var(--accent-deep);
+      border-color: var(--accent-deep);
+      color: #fff8f1;
+    }
+
+    .read-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .book-card {
+      overflow: hidden;
+      transition: transform 0.18s ease, border-color 0.18s ease;
+    }
+
+    .book-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(90, 67, 44, 0.24);
+    }
+
+    .book-button {
+      width: 100%;
+      border: 0;
+      background: none;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 14px;
+      text-align: left;
+      cursor: pointer;
+      color: inherit;
+    }
+
+    .book-summary {
+      min-width: 0;
+    }
+
+    .rating {
+      margin-top: 10px;
+      color: var(--gold);
+      letter-spacing: 0.06em;
+      font-size: 0.88rem;
+    }
+
+    .book-details {
+      display: none;
+      padding: 0 16px 16px;
+      color: var(--muted-strong);
+      font-size: 0.9rem;
+    }
+
+    .book-card.open .book-details {
+      display: grid;
+      gap: 12px;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .detail-block {
+      padding: 12px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.56);
+      border: 1px solid rgba(90, 67, 44, 0.08);
+    }
+
+    .detail-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .review {
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      background: rgba(97, 102, 79, 0.08);
+      border: 1px solid rgba(97, 102, 79, 0.16);
+      white-space: pre-wrap;
+    }
+
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(138, 90, 47, 0.08);
+      color: var(--accent-deep);
+      font-size: 0.78rem;
+    }
+
+    .empty-state {
+      padding: 22px;
+      border-radius: var(--radius-lg);
+      border: 1px dashed var(--line-strong);
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .collapsible {
+      display: none;
+      margin-top: 16px;
+    }
+
+    .collapsible.open {
+      display: block;
+    }
 
     .toread-list {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 10px;
     }
 
     .toread-item {
+      padding: 14px 16px;
       display: flex;
-      align-items: baseline;
-      gap: 7px;
-      padding: 10px 12px;
-      border: 1px solid rgba(122, 92, 62, 0.08);
-      border-radius: 14px;
-      background: rgba(255, 252, 247, 0.72);
-      transition: background .12s ease, border-color .12s ease, transform .12s ease;
-    }
-    .toread-item:hover {
-      background: rgba(122, 92, 62, 0.07);
-      border-color: rgba(122, 92, 62, 0.14);
-      transform: translateY(-1px);
-    }
-    .toread-title { font-size: .84rem; font-weight: 500; color: var(--text); }
-    .toread-author { font-size: .76rem; color: var(--muted); }
-
-    /* ── Empty state ──────────────────────────────────── */
-    .empty-state {
-      padding: 52px 0 36px;
-      text-align: center;
-      color: var(--muted);
-      font-size: .88rem;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
     }
 
-    /* ── Footer ───────────────────────────────────────── */
-    footer {
-      padding: 28px 0 34px;
-      font-size: .78rem;
+    .footer {
+      padding: 20px 8px 0;
       color: var(--muted);
+      font-size: 0.86rem;
       text-align: center;
     }
 
-    /* ── Responsive ───────────────────────────────────── */
-    @media (max-width: 980px) {
-      header .container {
+    .loading {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .loading::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+      animation: shimmer 1.2s infinite;
+    }
+
+    .loading-block {
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(90, 67, 44, 0.08);
+    }
+
+    .hidden { display: none !important; }
+
+    @keyframes shimmer {
+      to { transform: translateX(100%); }
+    }
+
+    @media (max-width: 920px) {
+      header.panel {
         grid-template-columns: 1fr;
       }
 
@@ -605,567 +740,633 @@
         justify-content: flex-start;
       }
 
+      .recommendation-grid,
+      .stats-bar {
+        grid-template-columns: 1fr;
+      }
     }
 
-    @media (max-width: 640px) {
-      header {
+    @media (max-width: 680px) {
+      .shell {
+        width: min(100vw - 20px, 1240px);
         padding-top: 12px;
       }
-      header .container,
-      .section .container {
-        padding-left: 18px;
-        padding-right: 18px;
+
+      header.panel,
+      section.panel {
+        padding: 22px;
+        border-radius: 24px;
       }
-      .site-title { font-size: 2rem; }
-      nav { display: none; }
-      .book-wall { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
-      .currently-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
-      .search-input { max-width: 100%; }
-      .book-hovercard {
-        width: min(220px, calc(100vw - 20px));
-        padding: 10px;
+
+      .book-button,
+      .current-card {
+        grid-template-columns: 78px minmax(0, 1fr);
+      }
+
+      .detail-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
 </head>
 <body>
+  <div class="shell">
+    <header class="panel">
+      <div>
+        <div class="eyebrow">Personal library</div>
+        <h1>Xinyu's Bookshelf</h1>
+        <p class="subtitle">What I’ve been reading, how my taste looks from a distance, and where two language models think I should go next.</p>
+      </div>
+      <nav>
+        <a href="#taste-profile">Taste profile</a>
+        <a href="#recommendations">LLM counsel</a>
+        <a href="#read">Read</a>
+        <a href="#currently-reading">Reading now</a>
+        <a href="#to-read">To read</a>
+      </nav>
+    </header>
 
-<!-- ── Header ──────────────────────────────────────────── -->
-<header>
-  <div class="container">
-    <div class="masthead-copy">
-      <p class="site-kicker">Personal Library Archive</p>
-      <h1 class="site-title">Xinyu's Bookshelf</h1>
-      <p class="site-subtitle">A curated reading archive of books I&rsquo;ve finished, what I&rsquo;m reading now, and the titles waiting on the shelf.</p>
-    </div>
-    <nav>
-      <a href="#read">Books read</a>
-      <a href="#currently-reading">Reading now</a>
-      <a href="#to-read">To read</a>
-    </nav>
-  </div>
-</header>
-
-<!-- ── Books Read (first) ──────────────────────────────── -->
-<section id="read" class="section">
-  <div class="container">
-    <h2 class="section-heading">
-      Books Read
-      <span class="section-count" id="read-count"></span>
-    </h2>
-
-    <button class="collapsible-toggle" id="read-controls-toggle">
-      <span class="chevron">▶</span>
-      <span>Show search & filters</span>
-    </button>
-
-    <div class="controls is-collapsed" id="read-controls">
-      <div class="controls-row">
-        <span class="control-label">Search</span>
-        <input class="search-input" type="search" id="search-input" placeholder="Title or author…" autocomplete="off">
-        <span class="control-label" style="margin-left:6px">Sort</span>
-        <div class="pill-group" id="sort-pills">
-          <button class="pill active" data-sort="date_read">Date read</button>
-          <button class="pill" data-sort="my_rating">My rating</button>
-          <button class="pill" data-sort="title">Title A–Z</button>
-          <button class="pill" data-sort="author">Author A–Z</button>
-          <button class="pill" data-sort="pages">Pages</button>
+    <main>
+      <section id="taste-profile" class="panel hero loading">
+        <div class="section-head">
+          <div>
+            <h2>Taste Profile</h2>
+            <p class="section-meta">A build-time reading sketch based on what’s actually on the shelf, not a generic genre horoscope.</p>
+          </div>
         </div>
-      </div>
-      <div class="controls-row">
-        <span class="control-label">Rating</span>
-        <div class="pill-group" id="rating-pills">
-          <button class="pill active" data-rating="0">All</button>
-          <button class="pill" data-rating="3">★★★+</button>
-          <button class="pill" data-rating="4">★★★★+</button>
-          <button class="pill" data-rating="5">★★★★★</button>
+        <div class="hero-quote">
+          <div class="loading-block" style="width: 92%; height: 36px;"></div>
+          <div class="loading-block" style="width: 76%; height: 36px; margin-top: 10px;"></div>
         </div>
-      </div>
-      <div class="controls-row">
-        <span class="control-label">Shelf</span>
-        <div class="shelf-tags" id="shelf-tags"></div>
-      </div>
-    </div>
+        <div class="traits">
+          <div class="trait-card loading" style="height: 132px;"></div>
+          <div class="trait-card loading" style="height: 132px;"></div>
+          <div class="trait-card loading" style="height: 132px;"></div>
+        </div>
+      </section>
 
-    <div class="book-wall" id="read-grid"></div>
-    <div class="empty-state" id="empty-state" style="display:none">No books match your filters.</div>
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>At A Glance</h2>
+            <p class="section-meta">The numbers that frame the library.</p>
+          </div>
+        </div>
+        <div class="stats-bar" id="stats-bar"></div>
+      </section>
+
+      <section id="currently-reading" class="panel hidden">
+        <div class="section-head">
+          <div>
+            <h2>Reading Now</h2>
+            <p class="section-meta">Books currently open somewhere on the desk.</p>
+          </div>
+          <span class="count-chip" id="currently-count">0 books</span>
+        </div>
+        <div class="current-grid" id="current-grid"></div>
+      </section>
+
+      <section id="recommendations" class="panel loading">
+        <div class="section-head">
+          <div>
+            <h2>What Should I Read Next?</h2>
+            <p class="section-meta">Two AIs weigh in independently. The overlap is the interesting part.</p>
+          </div>
+        </div>
+        <div class="recommendation-grid">
+          <div class="recommendation-card loading" style="height: 380px;"></div>
+          <div class="recommendation-card loading" style="height: 380px;"></div>
+        </div>
+      </section>
+
+      <section id="read" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Read Books</h2>
+            <p class="section-meta">Sort, filter, search, and open any card for ratings, shelves, pages, and notes.</p>
+          </div>
+          <span class="count-chip" id="read-count">0 books</span>
+        </div>
+
+        <div class="controls">
+          <div class="controls-row">
+            <span class="controls-label">Search</span>
+            <input id="search-input" class="search" type="search" placeholder="Title or author" autocomplete="off">
+          </div>
+          <div class="controls-row">
+            <span class="controls-label">Sort</span>
+            <div class="pill-row" id="sort-pills">
+              <button class="pill active" data-sort="date_read">Date read</button>
+              <button class="pill" data-sort="my_rating">My rating</button>
+              <button class="pill" data-sort="title">Title A-Z</button>
+              <button class="pill" data-sort="author">Author A-Z</button>
+              <button class="pill" data-sort="pages">Pages</button>
+            </div>
+          </div>
+          <div class="controls-row">
+            <span class="controls-label">Rating</span>
+            <div class="pill-row" id="rating-pills">
+              <button class="pill active" data-rating="0">All</button>
+              <button class="pill" data-rating="3">★★★+</button>
+              <button class="pill" data-rating="4">★★★★+</button>
+              <button class="pill" data-rating="5">★★★★★</button>
+            </div>
+          </div>
+          <div class="controls-row">
+            <span class="controls-label">Shelves</span>
+            <div class="shelf-row" id="shelf-filters"></div>
+          </div>
+        </div>
+
+        <div class="read-grid" id="read-grid"></div>
+        <div class="empty-state hidden" id="read-empty">No books match those filters.</div>
+      </section>
+
+      <section id="to-read" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>To Read</h2>
+            <p class="section-meta">The pile of future intentions.</p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <span class="count-chip" id="to-read-count">0 books</span>
+            <button class="toggle" id="to-read-toggle" aria-expanded="false">Show list</button>
+          </div>
+        </div>
+        <div class="collapsible" id="to-read-panel">
+          <div class="toread-list" id="to-read-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer" id="footer-text">Loading bookshelf…</footer>
   </div>
-</section>
 
-<!-- ── Currently Reading (second) ─────────────────────── -->
-<section id="currently-reading" class="section">
-  <div class="container">
-    <h2 class="section-heading">
-      Currently Reading
-      <span class="section-count" id="currently-reading-count"></span>
-    </h2>
-    <div class="currently-grid" id="currently-reading-grid"></div>
-  </div>
-</section>
+  <script>
+    const state = { sort: 'date_read', rating: 0, shelves: [], query: '' };
+    let readBooks = [];
+    let openBookKey = null;
+    let healthPayload = null;
 
-<!-- ── To Read ─────────────────────────────────────────── -->
-<section id="to-read" class="section">
-  <div class="container">
-    <h2 class="section-heading">
-      Want to Read
-      <span class="section-count" id="to-read-count"></span>
-    </h2>
-    <button class="collapsible-toggle" id="toread-toggle">
-      <span class="chevron">▶</span>
-      <span>Show list</span>
-    </button>
-    <div class="collapsible-content" id="toread-content">
-      <div class="toread-list" id="toread-list"></div>
-    </div>
-  </div>
-</section>
-
-<!-- ── Footer ─────────────────────────────────────────── -->
-<footer>
-  <div class="container">
-    <span id="footer-text">Data from Goodreads</span>
-  </div>
-</footer>
-
-<div class="book-hovercard" id="book-hovercard" hidden aria-hidden="true"></div>
-
-<script>
-// ── Utilities ─────────────────────────────────────────────────────────────────
-
-function stars(n, max = 5) {
-  let s = '';
-  for (let i = 1; i <= max; i++) {
-    s += `<span class="${i <= n ? 'overlay-star-on' : 'overlay-star-off'}">★</span>`;
-  }
-  return `<span class="overlay-stars">${s}</span>`;
-}
-
-function formatDate(d) {
-  if (!d) return '';
-  const [y, m] = d.split('-');
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return months[parseInt(m, 10) - 1] + ' ' + y;
-}
-
-function escHtml(str) {
-  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function escAttr(str) {
-  return escHtml(str).replace(/'/g, '&#39;');
-}
-
-function stripHtml(str) {
-  return (str || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// ── URL hash state ─────────────────────────────────────────────────────────────
-
-function readHash() {
-  const params = {};
-  const hash = location.hash.replace('#', '');
-  if (!hash) return params;
-  hash.split('&').forEach(part => {
-    const [k, v] = part.split('=');
-    if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || '');
-  });
-  return params;
-}
-
-function writeHash(params) {
-  const parts = Object.entries(params)
-    .filter(([, v]) => v !== '' && v !== null && v !== undefined)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
-  history.replaceState(null, '', '#' + parts.join('&'));
-}
-
-// ── State ──────────────────────────────────────────────────────────────────────
-
-const state = { sort: 'date_read', rating: 0, shelves: [], query: '' };
-let allReadBooks = [];
-let activeHoverCard = null;
-const hovercardEl = document.getElementById('book-hovercard');
-
-// ── Build card ────────────────────────────────────────────────────────────────
-
-function buildCoverHtml(book) {
-  const title = escHtml(book.title || 'Untitled');
-  const author = escHtml(book.author || 'Unknown author');
-  const placeholder = `
-    <div class="book-cover-placeholder"${book.isbn13 ? ' style="display:none"' : ''}>
-      <span class="book-cover-placeholder-label">No cover</span>
-      <div class="book-cover-placeholder-copy">
-        <div class="book-cover-placeholder-title">${title}</div>
-        <div class="book-cover-placeholder-author">${author}</div>
-      </div>
-    </div>`;
-  if (book.isbn13) {
-    const url = `https://covers.openlibrary.org/b/isbn/${book.isbn13}-M.jpg?default=false`;
-    return `<img class="book-cover" src="${url}" alt="${title}" loading="lazy"
-      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      ${placeholder}`;
-  }
-  return placeholder;
-}
-
-function buildCardDataAttrs(book, context) {
-  const attrs = {
-    'data-title': book.title || '',
-    'data-author': book.author || '',
-    'data-rating': book.my_rating || '',
-    'data-pages': book.pages || '',
-    'data-date': book.date_read || '',
-    'data-status': context === 'currently-reading' ? 'Reading now' : '',
-    'data-shelves': (book.shelves || []).slice(0, 4).join('|'),
-  };
-
-  return Object.entries(attrs)
-    .filter(([, value]) => value !== '')
-    .map(([key, value]) => `${key}="${escAttr(String(value))}"`)
-    .join(' ');
-}
-
-function buildCard(book, extraClass = '', context = 'read') {
-  const attrs = buildCardDataAttrs(book, context);
-  const label = `${book.title || 'Untitled'} by ${book.author || 'Unknown author'}`;
-  return `<button type="button" class="book-card${extraClass ? ' ' + extraClass : ''}" ${attrs} aria-label="${escAttr(label)}">
-    <div class="book-cover-shell">
-      ${buildCoverHtml(book)}
-    </div>
-  </button>`;
-}
-
-function buildHovercardContent(card) {
-  const rows = [];
-  if (card.dataset.rating) {
-    rows.push(`<div class="hovercard-row"><span class="hovercard-label">Rating</span>${stars(Number(card.dataset.rating))}</div>`);
-  }
-  if (card.dataset.pages) {
-    rows.push(`<div class="hovercard-row"><span class="hovercard-label">Pages</span><span class="hovercard-value">${Number(card.dataset.pages).toLocaleString()}</span></div>`);
-  }
-  if (card.dataset.date) {
-    rows.push(`<div class="hovercard-row"><span class="hovercard-label">Finished</span><span class="hovercard-value">${escHtml(formatDate(card.dataset.date))}</span></div>`);
-  } else if (card.dataset.status) {
-    rows.push(`<div class="hovercard-row"><span class="hovercard-label">Status</span><span class="hovercard-value">${escHtml(card.dataset.status)}</span></div>`);
-  }
-
-  const shelves = (card.dataset.shelves || '').split('|').filter(Boolean);
-  const shelvesHtml = shelves.length > 0
-    ? `<div class="hovercard-shelves">${shelves.map(shelf => `<span class="hovercard-tag">${escHtml(shelf)}</span>`).join('')}</div>`
-    : '';
-
-  return `
-    <div class="hovercard-title">${escHtml(card.dataset.title || 'Untitled')}</div>
-    <div class="hovercard-author">${escHtml(card.dataset.author || 'Unknown author')}</div>
-    ${rows.length > 0 ? `<div class="hovercard-meta">${rows.join('')}</div>` : ''}
-    ${shelvesHtml}
-  `;
-}
-
-function positionHovercard(card) {
-  const cardRect = card.getBoundingClientRect();
-  const hoverRect = hovercardEl.getBoundingClientRect();
-  const gap = 12;
-  let top = cardRect.top - hoverRect.height - gap;
-
-  if (top < 12) top = cardRect.bottom + gap;
-
-  let left = cardRect.left + (cardRect.width - hoverRect.width) / 2;
-  left = Math.max(12, Math.min(left, window.innerWidth - hoverRect.width - 12));
-
-  hovercardEl.style.top = `${Math.round(top)}px`;
-  hovercardEl.style.left = `${Math.round(left)}px`;
-}
-
-function showHovercard(card, markTouch = false) {
-  if (activeHoverCard && activeHoverCard !== card) {
-    activeHoverCard.classList.remove('is-active', 'touch-active');
-  }
-
-  activeHoverCard = card;
-  card.classList.add('is-active');
-  if (markTouch) card.classList.add('touch-active');
-
-  hovercardEl.innerHTML = buildHovercardContent(card);
-  hovercardEl.hidden = false;
-  hovercardEl.setAttribute('aria-hidden', 'false');
-  hovercardEl.classList.remove('is-visible');
-
-  requestAnimationFrame(() => {
-    positionHovercard(card);
-    hovercardEl.classList.add('is-visible');
-  });
-}
-
-function hideHovercard() {
-  if (activeHoverCard) {
-    activeHoverCard.classList.remove('is-active', 'touch-active');
-    activeHoverCard = null;
-  }
-
-  hovercardEl.classList.remove('is-visible');
-  hovercardEl.setAttribute('aria-hidden', 'true');
-  window.setTimeout(() => {
-    if (!hovercardEl.classList.contains('is-visible')) hovercardEl.hidden = true;
-  }, 160);
-}
-
-// ── Hover / touch support ─────────────────────────────────────────────────────
-
-document.addEventListener('mouseover', e => {
-  if (!window.matchMedia('(hover: hover)').matches) return;
-  const card = e.target.closest('.book-card');
-  if (!card) return;
-  showHovercard(card);
-});
-
-document.addEventListener('mouseout', e => {
-  if (!window.matchMedia('(hover: hover)').matches) return;
-  const card = e.target.closest('.book-card');
-  if (!card || card.contains(e.relatedTarget)) return;
-  if (activeHoverCard === card) hideHovercard();
-});
-
-document.addEventListener('focusin', e => {
-  const card = e.target.closest('.book-card');
-  if (!card) return;
-  showHovercard(card);
-});
-
-document.addEventListener('focusout', e => {
-  const card = e.target.closest('.book-card');
-  if (!card || card.contains(e.relatedTarget)) return;
-  if (activeHoverCard === card) hideHovercard();
-});
-
-document.addEventListener('click', e => {
-  const card = e.target.closest('.book-card');
-  if (!card) {
-    hideHovercard();
-    return;
-  }
-
-  if (window.matchMedia('(hover: none)').matches) {
-    const wasActive = card.classList.contains('touch-active');
-    if (wasActive) {
-      hideHovercard();
-      return;
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
-    showHovercard(card, true);
-  }
-});
 
-window.addEventListener('resize', () => {
-  if (activeHoverCard) positionHovercard(activeHoverCard);
-});
-
-window.addEventListener('scroll', () => {
-  if (activeHoverCard) positionHovercard(activeHoverCard);
-}, { passive: true });
-
-// ── Sort / filter / render ─────────────────────────────────────────────────────
-
-function sortBooks(books) {
-  const copy = [...books];
-  switch (state.sort) {
-    case 'my_rating': return copy.sort((a, b) => (b.my_rating || 0) - (a.my_rating || 0));
-    case 'title':     return copy.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-    case 'author':    return copy.sort((a, b) => (a.author || '').localeCompare(b.author || ''));
-    case 'pages':     return copy.sort((a, b) => (b.pages || 0) - (a.pages || 0));
-    default:          return copy; // date_read: already sorted in JSON
-  }
-}
-
-function filterBooks(books) {
-  return books.filter(book => {
-    if (state.rating > 0 && book.my_rating < state.rating) return false;
-    if (state.shelves.length > 0 && !state.shelves.some(s => (book.shelves || []).includes(s))) return false;
-    if (state.query) {
-      const q = state.query.toLowerCase();
-      if (!`${book.title} ${book.author}`.toLowerCase().includes(q)) return false;
+    function normalizeKey(book) {
+      return `${(book.title || '').trim().toLowerCase()}::${(book.author || '').trim().toLowerCase()}`;
     }
-    return true;
-  });
-}
 
-function renderReadGrid() {
-  const grid = document.getElementById('read-grid');
-  const empty = document.getElementById('empty-state');
-  const countEl = document.getElementById('read-count');
-  const filtered = filterBooks(sortBooks(allReadBooks));
-  hideHovercard();
-  countEl.textContent = filtered.length;
-  if (filtered.length === 0) {
-    grid.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
-  empty.style.display = 'none';
-  grid.innerHTML = filtered.map(b => buildCard(b, '', 'read')).join('');
-}
+    function formatDateShort(value) {
+      if (!value) return 'Unknown';
+      const date = new Date(`${value}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+    }
 
-// ── Shelf tags ─────────────────────────────────────────────────────────────────
+    function formatDateLong(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
 
-function buildShelfTags(books) {
-  const counts = {};
-  books.forEach(b => (b.shelves || []).forEach(s => { counts[s] = (counts[s] || 0) + 1; }));
-  const shelves = Object.entries(counts)
-    .filter(([, c]) => c >= 3)
-    .sort((a, b) => b[1] - a[1])
-    .map(([s]) => s);
+    function stars(rating) {
+      if (!rating) return 'Unrated';
+      return '★'.repeat(rating) + '☆'.repeat(5 - rating);
+    }
 
-  document.getElementById('shelf-tags').innerHTML = shelves.map(s =>
-    `<button class="shelf-tag" data-shelf="${escHtml(s)}" onclick="toggleShelf('${escHtml(s)}')">${escHtml(s)}</button>`
-  ).join('');
-}
+    function coverMarkup(book) {
+      const title = escapeHtml(book.title || 'Untitled');
+      const initial = escapeHtml((book.title || '?').trim().charAt(0).toUpperCase() || '?');
+      if (book.isbn13) {
+        const url = `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(book.isbn13)}-M.jpg?default=false`;
+        return `<div class="cover"><img src="${url}" alt="${title}" loading="lazy" onerror="this.remove(); this.parentElement.innerHTML='<div class=&quot;cover-fallback&quot;>${initial}</div>'"></div>`;
+      }
+      return `<div class="cover"><div class="cover-fallback">${initial}</div></div>`;
+    }
 
-function toggleShelf(shelf) {
-  const idx = state.shelves.indexOf(shelf);
-  if (idx === -1) state.shelves.push(shelf);
-  else state.shelves.splice(idx, 1);
-  document.querySelectorAll('.shelf-tag').forEach(el => {
-    el.classList.toggle('active', state.shelves.includes(el.dataset.shelf));
-  });
-  syncHash();
-  renderReadGrid();
-}
+    function readHash() {
+      const raw = location.hash.replace(/^#/, '');
+      if (!raw) return {};
+      return raw.split('&').reduce((acc, part) => {
+        const [key, value] = part.split('=');
+        if (key) acc[decodeURIComponent(key)] = decodeURIComponent(value || '');
+        return acc;
+      }, {});
+    }
 
-// ── Controls ───────────────────────────────────────────────────────────────────
+    function writeHash(params) {
+      const parts = Object.entries(params)
+        .filter(([, value]) => value !== '' && value !== null && value !== undefined)
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+      history.replaceState(null, '', parts.length ? `#${parts.join('&')}` : location.pathname);
+    }
 
-document.getElementById('sort-pills').addEventListener('click', e => {
-  const pill = e.target.closest('[data-sort]');
-  if (!pill) return;
-  state.sort = pill.dataset.sort;
-  document.querySelectorAll('#sort-pills .pill').forEach(p => p.classList.remove('active'));
-  pill.classList.add('active');
-  syncHash(); renderReadGrid();
-});
+    function applyHashState() {
+      const params = readHash();
+      if (params.sort) state.sort = params.sort;
+      if (params.rating) state.rating = Number(params.rating) || 0;
+      if (params.shelf) state.shelves = params.shelf.split(',').filter(Boolean);
+      if (params.q) state.query = params.q;
 
-document.getElementById('rating-pills').addEventListener('click', e => {
-  const pill = e.target.closest('[data-rating]');
-  if (!pill) return;
-  state.rating = parseInt(pill.dataset.rating, 10);
-  document.querySelectorAll('#rating-pills .pill').forEach(p => p.classList.remove('active'));
-  pill.classList.add('active');
-  syncHash(); renderReadGrid();
-});
+      document.querySelectorAll('#sort-pills .pill').forEach((pill) => {
+        pill.classList.toggle('active', pill.dataset.sort === state.sort);
+      });
+      document.querySelectorAll('#rating-pills .pill').forEach((pill) => {
+        pill.classList.toggle('active', Number(pill.dataset.rating) === state.rating);
+      });
+      document.getElementById('search-input').value = state.query;
+    }
 
-let searchTimer;
-document.getElementById('search-input').addEventListener('input', e => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    state.query = e.target.value.trim();
-    syncHash(); renderReadGrid();
-  }, 150);
-});
+    function syncHashState() {
+      writeHash({
+        sort: state.sort !== 'date_read' ? state.sort : '',
+        rating: state.rating ? String(state.rating) : '',
+        shelf: state.shelves.join(','),
+        q: state.query || '',
+      });
+    }
 
-// ── Hash ───────────────────────────────────────────────────────────────────────
+    function sortBooks(books) {
+      const copy = [...books];
+      switch (state.sort) {
+        case 'my_rating':
+          return copy.sort((a, b) => (b.my_rating || 0) - (a.my_rating || 0) || (b.avg_rating || 0) - (a.avg_rating || 0));
+        case 'title':
+          return copy.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        case 'author':
+          return copy.sort((a, b) => (a.author || '').localeCompare(b.author || ''));
+        case 'pages':
+          return copy.sort((a, b) => (b.pages || 0) - (a.pages || 0));
+        default:
+          return copy.sort((a, b) => {
+            if (!a.date_read && !b.date_read) return 0;
+            if (!a.date_read) return 1;
+            if (!b.date_read) return -1;
+            return b.date_read.localeCompare(a.date_read);
+          });
+      }
+    }
 
-function syncHash() {
-  writeHash({
-    sort: state.sort !== 'date_read' ? state.sort : '',
-    rating: state.rating > 0 ? state.rating : '',
-    shelf: state.shelves.join(','),
-    q: state.query,
-  });
-}
+    function filterBooks(books) {
+      return books.filter((book) => {
+        if (state.rating && (book.my_rating || 0) < state.rating) return false;
+        if (state.shelves.length && !state.shelves.some((shelf) => (book.shelves || []).includes(shelf))) return false;
+        if (state.query) {
+          const haystack = `${book.title || ''} ${book.author || ''}`.toLowerCase();
+          if (!haystack.includes(state.query.toLowerCase())) return false;
+        }
+        return true;
+      });
+    }
 
-function applyHash() {
-  const p = readHash();
-  if (p.sort) {
-    state.sort = p.sort;
-    document.querySelectorAll('#sort-pills .pill').forEach(pill => {
-      pill.classList.toggle('active', pill.dataset.sort === state.sort);
+    function renderStats(stats) {
+      const cards = [
+        { label: 'Books read', value: Number(stats.total_read || 0).toLocaleString() },
+        { label: 'This year', value: Number(stats.books_this_year || 0).toLocaleString() },
+        { label: 'Average rating', value: stats.avg_my_rating ? Number(stats.avg_my_rating).toFixed(1) : '—' },
+        { label: 'Currently reading', value: Number(stats.currently_reading_count || 0).toLocaleString() },
+      ];
+      document.getElementById('stats-bar').innerHTML = cards.map((card) => `
+        <div class="stat">
+          <span class="stat-label">${escapeHtml(card.label)}</span>
+          <span class="stat-value">${escapeHtml(card.value)}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderTasteProfile(profile) {
+      const section = document.getElementById('taste-profile');
+      if (!profile || !profile.summary) {
+        section.classList.add('hidden');
+        return;
+      }
+      section.classList.remove('hidden', 'loading');
+      section.innerHTML = `
+        <div class="section-head">
+          <div>
+            <h2>Taste Profile</h2>
+            <p class="section-meta">A build-time reading sketch based on what’s actually on the shelf, not a generic genre horoscope.</p>
+          </div>
+        </div>
+        <div class="hero-quote">“${escapeHtml(profile.summary)}”</div>
+        <div class="traits">
+          ${(profile.traits || []).map((trait) => `
+            <article class="trait-card">
+              <h3>${escapeHtml(trait.label)}</h3>
+              <p>${escapeHtml(trait.explanation)}</p>
+            </article>
+          `).join('')}
+        </div>
+        <div class="blind-spot"><strong>Blind spot:</strong> ${escapeHtml(profile.blind_spots || '')}</div>
+      `;
+    }
+
+    function renderCurrentlyReading(books) {
+      const section = document.getElementById('currently-reading');
+      if (!books.length) {
+        section.classList.add('hidden');
+        return;
+      }
+      section.classList.remove('hidden');
+      document.getElementById('currently-count').textContent = `${books.length} book${books.length === 1 ? '' : 's'}`;
+      document.getElementById('current-grid').innerHTML = books.map((book) => `
+        <article class="current-card">
+          ${coverMarkup(book)}
+          <div>
+            <div class="book-title">${escapeHtml(book.title || 'Untitled')}</div>
+            <div class="book-author">${escapeHtml(book.author || 'Unknown author')}</div>
+            <div class="book-meta">
+              ${book.pages ? `<span>${Number(book.pages).toLocaleString()} pages</span>` : ''}
+              ${book.avg_rating ? `<span>GR ${Number(book.avg_rating).toFixed(2)}</span>` : ''}
+            </div>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function recommendationProviderTitle(key) {
+      return key === 'opus' ? 'Claude Opus' : 'GPT-4.5';
+    }
+
+    function renderRecommendations(recommendations) {
+      const section = document.getElementById('recommendations');
+      const providers = [
+        ['opus', recommendations ? recommendations.opus : null],
+        ['gpt45', recommendations ? recommendations.gpt45 : null],
+      ];
+      const successful = providers.filter(([, entry]) => entry && Array.isArray(entry.books) && entry.books.length);
+
+      if (!successful.length) {
+        section.classList.add('hidden');
+        return;
+      }
+
+      const overlap = new Set();
+      if (successful.length === 2) {
+        const left = new Set(successful[0][1].books.map(normalizeKey));
+        successful[1][1].books.forEach((book) => {
+          const key = normalizeKey(book);
+          if (left.has(key)) overlap.add(key);
+        });
+      }
+
+      const failures = providers.filter(([, entry]) => entry && entry.error);
+      const advisory = failures.length === 1
+        ? `${recommendationProviderTitle(failures[0][0])} was unavailable when this set was last generated.`
+        : '';
+
+      section.classList.remove('hidden', 'loading');
+      section.innerHTML = `
+        <div class="section-head">
+          <div>
+            <h2>What Should I Read Next?</h2>
+            <p class="section-meta">Two AIs weigh in independently. The overlap is the interesting part.</p>
+          </div>
+        </div>
+        ${advisory ? `<div class="advisory">${escapeHtml(advisory)}</div>` : ''}
+        <div class="recommendation-grid${successful.length === 1 ? ' single' : ''}">
+          ${successful.map(([providerKey, entry]) => `
+            <div class="recommendation-column">
+              <div class="recommendation-column-header">
+                <h3>${escapeHtml(recommendationProviderTitle(providerKey))}</h3>
+                <span class="model-chip">${escapeHtml(entry.model || 'model unavailable')}</span>
+              </div>
+              <p class="reasoning">${escapeHtml(entry.reasoning || '')}</p>
+              ${entry.books.map((book) => `
+                <article class="recommendation-card">
+                  <div class="recommendation-top">
+                    <div>
+                      <div class="book-title">${escapeHtml(book.title)}</div>
+                      <div class="book-author">${escapeHtml(book.author)}</div>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
+                      ${overlap.has(normalizeKey(book)) ? '<span class="agree-badge">Both agree</span>' : ''}
+                      <span class="confidence-badge ${escapeHtml(book.confidence || 'medium')}">${escapeHtml(book.confidence || 'medium')}</span>
+                    </div>
+                  </div>
+                  <p>${escapeHtml(book.reason || '')}</p>
+                </article>
+              `).join('')}
+            </div>
+          `).join('')}
+        </div>
+        <div class="recommendation-footer" id="recommendation-footer"></div>
+      `;
+
+      const generatedAt = healthPayload && (healthPayload.llm_generated_at || healthPayload.generated_at);
+      document.getElementById('recommendation-footer').textContent = generatedAt
+        ? `Generated on ${formatDateLong(generatedAt)}. Recommendations refresh when new books are added.`
+        : 'Recommendations refresh when new books are added.';
+    }
+
+    function renderShelfFilters(books) {
+      const counts = {};
+      const excluded = new Set(['read', 'to-read', 'currently-reading']);
+      books.forEach((book) => {
+        (book.shelves || []).forEach((shelf) => {
+          if (excluded.has(shelf)) return;
+          counts[shelf] = (counts[shelf] || 0) + 1;
+        });
+      });
+      const shelves = Object.entries(counts)
+        .filter(([, count]) => count >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .map(([shelf]) => shelf);
+
+      const container = document.getElementById('shelf-filters');
+      container.innerHTML = shelves.map((shelf) => `
+        <button class="shelf-pill${state.shelves.includes(shelf) ? ' active' : ''}" data-shelf="${escapeHtml(shelf)}">${escapeHtml(shelf)}</button>
+      `).join('');
+    }
+
+    function buildBookCard(book) {
+      const key = normalizeKey(book);
+      const isOpen = key === openBookKey;
+      return `
+        <article class="book-card${isOpen ? ' open' : ''}" data-key="${escapeHtml(key)}">
+          <button class="book-button" type="button" data-key="${escapeHtml(key)}" aria-expanded="${isOpen ? 'true' : 'false'}">
+            ${coverMarkup(book)}
+            <div class="book-summary">
+              <div class="book-title">${escapeHtml(book.title || 'Untitled')}</div>
+              <div class="book-author">${escapeHtml(book.author || 'Unknown author')}</div>
+              <div class="rating">${escapeHtml(stars(book.my_rating || 0))}</div>
+              <div class="book-meta">
+                ${book.date_read ? `<span>Read ${escapeHtml(formatDateShort(book.date_read))}</span>` : '<span>No finish date</span>'}
+                ${book.pages ? `<span>${Number(book.pages).toLocaleString()} pages</span>` : ''}
+              </div>
+            </div>
+          </button>
+          <div class="book-details">
+            <div class="detail-grid">
+              <div class="detail-block">
+                <span class="detail-label">My rating</span>
+                <span>${escapeHtml(stars(book.my_rating || 0))}</span>
+              </div>
+              <div class="detail-block">
+                <span class="detail-label">Community rating</span>
+                <span>${book.avg_rating ? Number(book.avg_rating).toFixed(2) : '—'}</span>
+              </div>
+              <div class="detail-block">
+                <span class="detail-label">Finished</span>
+                <span>${escapeHtml(book.date_read || '—')}</span>
+              </div>
+              <div class="detail-block">
+                <span class="detail-label">Pages</span>
+                <span>${book.pages ? Number(book.pages).toLocaleString() : '—'}</span>
+              </div>
+            </div>
+            ${(book.shelves || []).length ? `<div><span class="detail-label">Shelves</span><div class="tag-list">${book.shelves.map((shelf) => `<span class="tag">${escapeHtml(shelf)}</span>`).join('')}</div></div>` : ''}
+            ${book.my_review ? `<div><span class="detail-label">Review</span><div class="review">${escapeHtml(book.my_review)}</div></div>` : ''}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderReadGrid() {
+      const filtered = filterBooks(sortBooks(readBooks));
+      document.getElementById('read-count').textContent = `${filtered.length} book${filtered.length === 1 ? '' : 's'}`;
+      document.getElementById('read-grid').innerHTML = filtered.map(buildBookCard).join('');
+      document.getElementById('read-empty').classList.toggle('hidden', filtered.length !== 0);
+    }
+
+    function renderToRead(books) {
+      document.getElementById('to-read-count').textContent = `${books.length} book${books.length === 1 ? '' : 's'}`;
+      document.getElementById('to-read-list').innerHTML = books.map((book) => `
+        <div class="toread-item">
+          <span class="book-title" style="font-size:1.05rem">${escapeHtml(book.title || 'Untitled')}</span>
+          <span class="book-author">${escapeHtml(book.author || 'Unknown author')}</span>
+        </div>
+      `).join('');
+    }
+
+    function updateFooter(booksPayload) {
+      const booksDate = booksPayload && booksPayload.generated_at ? formatDateLong(booksPayload.generated_at) : null;
+      const llmDate = healthPayload && (healthPayload.llm_generated_at || healthPayload.generated_at)
+        ? formatDateLong(healthPayload.llm_generated_at || healthPayload.generated_at)
+        : null;
+      document.getElementById('footer-text').textContent =
+        `Data from Goodreads${booksDate ? `, last updated ${booksDate}` : ''}. ` +
+        `Taste profile and recommendations${llmDate ? ` generated ${llmDate}` : ''}.`;
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+
+    async function loadApp() {
+      applyHashState();
+
+      const [booksResult, tasteResult, recommendationsResult, healthResult] = await Promise.allSettled([
+        fetchJson('/api/books'),
+        fetchJson('/api/taste-profile'),
+        fetchJson('/api/recommendations'),
+        fetchJson('/api/health'),
+      ]);
+
+      if (healthResult.status === 'fulfilled') {
+        healthPayload = healthResult.value;
+      }
+
+      if (booksResult.status !== 'fulfilled') {
+        document.body.innerHTML = `
+          <div class="shell">
+            <section class="panel" style="padding:32px; margin-top:24px;">
+              <h2 style="font-size:2rem;">Could not load the bookshelf</h2>
+              <p class="section-meta" style="margin-top:12px;">${escapeHtml(booksResult.reason && booksResult.reason.message ? booksResult.reason.message : 'Unknown error')}</p>
+            </section>
+          </div>
+        `;
+        return;
+      }
+
+      const booksPayload = booksResult.value;
+      readBooks = booksPayload.books.read || [];
+      renderStats(booksPayload.stats || {});
+      renderShelfFilters(readBooks);
+      renderReadGrid();
+      renderCurrentlyReading(booksPayload.books.currently_reading || []);
+      renderToRead(booksPayload.books.to_read || []);
+      updateFooter(booksPayload);
+
+      if (tasteResult.status === 'fulfilled') {
+        renderTasteProfile(tasteResult.value);
+      } else {
+        renderTasteProfile(null);
+      }
+
+      if (recommendationsResult.status === 'fulfilled') {
+        renderRecommendations(recommendationsResult.value);
+      } else {
+        renderRecommendations(null);
+      }
+    }
+
+    document.getElementById('sort-pills').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-sort]');
+      if (!button) return;
+      state.sort = button.dataset.sort;
+      document.querySelectorAll('#sort-pills .pill').forEach((pill) => pill.classList.toggle('active', pill === button));
+      syncHashState();
+      renderReadGrid();
     });
-  }
-  if (p.rating) {
-    state.rating = parseInt(p.rating, 10);
-    document.querySelectorAll('#rating-pills .pill').forEach(pill => {
-      pill.classList.toggle('active', parseInt(pill.dataset.rating, 10) === state.rating);
+
+    document.getElementById('rating-pills').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-rating]');
+      if (!button) return;
+      state.rating = Number(button.dataset.rating) || 0;
+      document.querySelectorAll('#rating-pills .pill').forEach((pill) => pill.classList.toggle('active', pill === button));
+      syncHashState();
+      renderReadGrid();
     });
-  }
-  if (p.shelf) state.shelves = p.shelf.split(',').filter(Boolean);
-  if (p.q) {
-    state.query = p.q;
-    document.getElementById('search-input').value = p.q;
-  }
-}
 
-// ── To-read toggle ─────────────────────────────────────────────────────────────
+    let searchTimer = null;
+    document.getElementById('search-input').addEventListener('input', (event) => {
+      clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => {
+        state.query = event.target.value.trim();
+        syncHashState();
+        renderReadGrid();
+      }, 120);
+    });
 
-document.getElementById('toread-toggle').addEventListener('click', function() {
-  this.classList.toggle('open');
-  document.getElementById('toread-content').classList.toggle('open');
-  const isOpen = this.classList.contains('open');
-  this.querySelector('.chevron').textContent = isOpen ? '▼' : '▶';
-  this.querySelector('span:last-child').textContent = isOpen ? 'Hide list' : 'Show list';
-});
+    document.getElementById('shelf-filters').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-shelf]');
+      if (!button) return;
+      const shelf = button.dataset.shelf;
+      if (state.shelves.includes(shelf)) {
+        state.shelves = state.shelves.filter((item) => item !== shelf);
+      } else {
+        state.shelves = [...state.shelves, shelf];
+      }
+      renderShelfFilters(readBooks);
+      syncHashState();
+      renderReadGrid();
+    });
 
-document.getElementById('read-controls-toggle').addEventListener('click', function() {
-  this.classList.toggle('open');
-  document.getElementById('read-controls').classList.toggle('is-collapsed');
-  const isOpen = this.classList.contains('open');
-  this.querySelector('.chevron').textContent = isOpen ? '▼' : '▶';
-  this.querySelector('span:last-child').textContent = isOpen ? 'Hide search & filters' : 'Show search & filters';
-});
+    document.getElementById('read-grid').addEventListener('click', (event) => {
+      const button = event.target.closest('.book-button');
+      if (!button) return;
+      const key = button.dataset.key;
+      openBookKey = openBookKey === key ? null : key;
+      renderReadGrid();
+    });
 
-// ── Currently reading ──────────────────────────────────────────────────────────
+    document.getElementById('to-read-toggle').addEventListener('click', () => {
+      const panel = document.getElementById('to-read-panel');
+      const isOpen = panel.classList.toggle('open');
+      document.getElementById('to-read-toggle').textContent = isOpen ? 'Hide list' : 'Show list';
+      document.getElementById('to-read-toggle').setAttribute('aria-expanded', String(isOpen));
+    });
 
-function renderCurrentlyReading(books) {
-  const grid = document.getElementById('currently-reading-grid');
-  const countEl = document.getElementById('currently-reading-count');
-  const section = document.getElementById('currently-reading');
-  hideHovercard();
-  countEl.textContent = books.length;
-  if (books.length === 0) { section.style.display = 'none'; return; }
-  grid.innerHTML = books.map(b => buildCard(b, 'currently-card', 'currently-reading')).join('');
-}
-
-// ── Load ───────────────────────────────────────────────────────────────────────
-
-async function load() {
-  let data;
-  try {
-    const res = await fetch('/api/books');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-  } catch (err) {
-    document.body.innerHTML = `<div style="padding:60px;text-align:center;color:#9a9187">
-      <p style="font-size:1.1rem">Could not reach the API</p>
-      <p style="font-size:.85rem;margin-top:8px">${err.message}</p>
-    </div>`;
-    return;
-  }
-
-  const { books, stats, generated_at } = data;
-
-  const genDate = generated_at
-    ? new Date(generated_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })
-    : '';
-  document.getElementById('footer-text').textContent =
-    `Data from Goodreads${genDate ? ' · Last updated ' + genDate : ''}`;
-
-  allReadBooks = books.read || [];
-  buildShelfTags(allReadBooks);
-  applyHash();
-  document.querySelectorAll('.shelf-tag').forEach(el => {
-    el.classList.toggle('active', state.shelves.includes(el.dataset.shelf));
-  });
-  renderReadGrid();
-
-  renderCurrentlyReading(books.currently_reading || []);
-
-  const toRead = books.to_read || [];
-  document.getElementById('to-read-count').textContent = toRead.length.toLocaleString();
-  document.getElementById('toread-list').innerHTML = toRead.map(b =>
-    `<div class="toread-item">
-      <span class="toread-title">${escHtml(b.title)}</span>
-      <span class="toread-author">— ${escHtml(b.author)}</span>
-    </div>`
-  ).join('');
-}
-
-load();
-</script>
+    loadApp();
+  </script>
 </body>
 </html>

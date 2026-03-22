@@ -1,97 +1,153 @@
 # Xinyu's Bookshelf
 
-Personal reading history website at [book.tanxy.net](https://book.tanxy.net), built from a Goodreads export and kept in sync automatically via RSS.
+Personal reading site for [book.tanxy.net](https://book.tanxy.net), built from a Goodreads CSV export and enriched with pre-generated LLM features.
 
 ## What it does
 
-- Displays 380+ books read as a dense cover wall — hover to see title, author, rating, and review snippets
-- Filters by shelf/tag, rating, and free-text search; sortable by date, rating, title, author, or pages
-- Currently reading and want-to-read sections
-- Auto-syncs with Goodreads every 6 hours via RSS — mark a book read on Goodreads, it appears on the site within 6 hours
-
-## Stack
-
-| Layer | Tech |
-|---|---|
-| Frontend | Single HTML file, vanilla JS, no build step |
-| Backend | FastAPI + uvicorn, systemd service |
-| Data | `books.json` (generated from Goodreads CSV, updated by RSS sync) |
-| Hosting | DigitalOcean VPS, Nginx, Let's Encrypt SSL |
-| Covers | Open Library Covers API |
+- Parses a Goodreads export into structured `books.json`
+- Generates a build-time taste profile from the read shelf
+- Generates side-by-side recommendation sets from Anthropic and OpenAI
+- Serves everything through a small FastAPI backend
+- Renders a single-file frontend with search, filters, sort controls, and expandable book cards
 
 ## Project structure
 
-```
+```text
 bookshelf/
-├── scripts/
-│   └── parse_goodreads.py   # Goodreads CSV → books.json
 ├── api/
-│   ├── main.py              # FastAPI: GET /api/books, POST /api/sync
-│   ├── sync.py              # RSS fetch + merge logic
+│   ├── main.py
 │   └── requirements.txt
-├── site/
-│   └── index.html           # Single-page frontend
+├── data/
+│   ├── goodreads_library_export.csv
+│   ├── books.json
+│   └── llm_cache.json
 ├── deploy/
-│   ├── nginx.conf           # Nginx site config
-│   └── bookshelf-api.service  # systemd service
-└── Makefile                 # parse / dev / deploy / sync
+│   ├── bookshelf.service
+│   └── nginx.conf
+├── scripts/
+│   ├── generate_llm.py
+│   └── parse_goodreads.py
+├── site/
+│   └── index.html
+├── bookshelf_data.py
+└── Makefile
 ```
+
+## Environment
+
+Copy `.env.example` to `.env` and fill in your keys. The local API and LLM generator now load `.env` automatically from the repo root, so you do not need to `export` the variables by hand for normal local runs.
+
+Required:
+
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+
+Optional:
+
+- `ANTHROPIC_MODEL`
+- `OPENAI_MODEL`
+- `BOOKS_DATA`
+- `LLM_CACHE_DATA`
+- `BOOKSHELF_CORS_ORIGINS`
+
+`OPENAI_MODEL` defaults to `gpt-4.1` in this repo so the OpenAI side stays configurable even if older preview IDs are unavailable.
 
 ## Local development
 
-**Prerequisites:** Python 3.11+, a Goodreads CSV export
+Recommended local setup:
 
 ```bash
-# Export your library from Goodreads:
-# Settings → Import and Export → Export Library
-# Save as data/goodreads_library_export.csv
-
-make dev   # parses CSV → books.json, serves site at http://localhost:8000
+cp .env.example .env
+make install
 ```
 
-## Deploying to a VPS
-
-### First-time setup
+Then update `.env` with your real API keys, place your Goodreads export at `data/goodreads_library_export.csv`, and run:
 
 ```bash
-# 1. Set your Goodreads user ID on the server
-#    (find it at goodreads.com/user/show/XXXXXXXX)
-ssh root@your-vps 'cat > /etc/bookshelf.env << EOF
-GOODREADS_USER_ID=YOUR_ID
-BOOKS_DATA=/var/www/book.tanxy.net/data/books.json
-EOF'
-
-# 2. Deploy everything
-make deploy        # push frontend + initial books.json
-make deploy-api    # install FastAPI, set up systemd
-make deploy-nginx  # push nginx config
-
-# 3. Seed data and verify
-make sync          # first RSS sync
+make build
+make dev
 ```
 
-### Routine updates
+`make` will automatically use `.venv/bin/python` once `make install` has created it, so activating the virtualenv is optional.
+
+That serves:
+
+- Site: `http://localhost:8000`
+- API: `http://127.0.0.1:8001`
+
+## Build targets
 
 ```bash
-make deploy   # push frontend changes
-make sync     # force an immediate RSS sync
-```
-
-Auto-sync runs every 6 hours via cron on the VPS:
-```
-0 */6 * * * curl -s -X POST http://127.0.0.1:8001/api/sync >> /var/log/bookshelf-sync.log 2>&1
+make install        # create .venv and install api dependencies
+make parse          # CSV -> data/books.json
+make llm            # data/books.json -> data/llm_cache.json (skips if unchanged)
+make llm-force      # always regenerate LLM outputs
+make build          # parse + llm
+make build FORCE_LLM=1
+make dev            # run FastAPI + static site locally
+make deploy         # build + rsync site/data/api/deploy assets to the VPS
 ```
 
 ## API
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/books` | Returns full `books.json` |
-| `POST` | `/api/sync` | Fetches Goodreads RSS and merges new/updated books |
-| `GET` | `/api/health` | Health check |
+- `GET /api/books`
+- `GET /api/taste-profile`
+- `GET /api/recommendations`
+- `GET /api/health`
 
-## Roadmap
+All API responses are read from disk-backed JSON files. Visitors never trigger live LLM calls.
 
-- **v0.5** ✓ FastAPI backend, Goodreads RSS auto-sync
-- **v1** SQLite database, per-book notes
-- **v1.5** LLM-powered "recommend me a book" feature
+## Local validation checklist
+
+```bash
+cp .env.example .env
+make install
+make build
+make dev
+```
+
+If `make build` succeeds, you should have:
+
+- `data/books.json`
+- `data/llm_cache.json`
+
+If only one provider key is valid, the build still succeeds and caches the working side.
+
+## LLM cache behavior
+
+`scripts/generate_llm.py` computes a SHA-256 hash from the sorted read shelf using:
+
+- title
+- author
+- my rating
+- my review
+
+If the hash matches `data/llm_cache.json`, generation is skipped unless `--force` is used.
+
+Anthropic powers:
+
+- Taste profile
+- One side of the recommendations
+
+OpenAI powers:
+
+- The second side of the recommendations
+
+If one recommendation provider fails, the other still gets cached and displayed.
+
+## Deployment notes
+
+`make deploy` syncs:
+
+- `site/`
+- `data/books.json`
+- `data/llm_cache.json`
+- `api/`
+- `deploy/nginx.conf`
+- `deploy/bookshelf.service`
+
+After deploy, restart the service on the server if API code changed:
+
+```bash
+sudo systemctl restart bookshelf
+```
