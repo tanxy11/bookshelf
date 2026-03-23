@@ -82,10 +82,11 @@ make install        # create .venv and install api dependencies
 make parse          # CSV -> data/books.json
 make llm            # data/books.json -> data/llm_cache.json (skips if unchanged)
 make llm-force      # always regenerate LLM outputs
-make build          # parse + llm
+make refresh-data   # parse + llm
+make build          # alias for refresh-data
 make build FORCE_LLM=1
 make dev            # run FastAPI + static site locally
-make deploy         # build + rsync site/data/api/deploy assets to the VPS
+make deploy         # rsync current site/data/api/deploy assets to the VPS
 ```
 
 ## API
@@ -145,6 +146,14 @@ If one recommendation provider fails, the other still gets cached and displayed.
 - `api/`
 - `deploy/nginx.conf`
 - `deploy/bookshelf.service`
+
+It also refreshes `data/llm_cache.json` from the current `data/books.json`, but it does not rebuild `books.json` from `data/goodreads_library_export.csv`.
+
+If you explicitly want to replace local synced data with a fresh CSV import, run:
+
+```bash
+make refresh-data
+```
 
 After deploy, restart the service on the server if API code changed:
 

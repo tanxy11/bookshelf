@@ -6,7 +6,7 @@ VPS_HOST  ?= root@134.199.239.64
 VPS_PATH  ?= /var/www/book.tanxy.net
 FORCE_LLM ?= 0
 
-.PHONY: install parse llm llm-force build dev deploy
+.PHONY: install parse llm llm-force build refresh-data dev deploy
 
 install:
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -29,7 +29,9 @@ llm-force:
 		--cache data/llm_cache.json \
 		--force
 
-build: parse
+build: refresh-data
+
+refresh-data: parse
 ifeq ($(FORCE_LLM),1)
 	$(MAKE) llm-force
 else
@@ -43,7 +45,7 @@ dev: parse
 		$(RUN_PYTHON) -m uvicorn api.main:app --host 127.0.0.1 --port 8001 --reload & \
 		cd site && $(RUN_PYTHON) -m http.server 8000
 
-deploy: build
+deploy: llm
 	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/site $(VPS_PATH)/data $(VPS_PATH)/api $(VPS_PATH)/deploy'
 	rsync -avz --delete site/ $(VPS_HOST):$(VPS_PATH)/site/
 	rsync -avz data/books.json data/llm_cache.json $(VPS_HOST):$(VPS_PATH)/data/
@@ -52,5 +54,6 @@ deploy: build
 	rsync -avz deploy/nginx.conf deploy/bookshelf.service $(VPS_HOST):$(VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(VPS_HOST):$(VPS_PATH)/
 	@echo "Deploy sync complete for $(VPS_HOST):$(VPS_PATH)"
+	@echo "Deployed using the current data/books.json (no CSV re-parse)."
 	@echo "If API code changed, restart the systemd service on the VPS:"
 	@echo "  sudo systemctl restart bookshelf"
