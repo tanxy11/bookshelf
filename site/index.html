@@ -260,6 +260,12 @@
       border-color: rgba(94, 105, 84, 0.22);
     }
 
+    .to-read-badge {
+      color: var(--accent);
+      background: rgba(122, 92, 62, 0.08);
+      border-color: rgba(122, 92, 62, 0.22);
+    }
+
     .taste-profile {
       background:
         linear-gradient(180deg, rgba(255, 252, 247, 0.94), rgba(246, 238, 228, 0.82)),
@@ -894,7 +900,7 @@
       <a href="#read">Books read</a>
       <a href="#currently-reading">Reading</a>
       <a href="#to-read">Want to read</a>
-      <a href="#recommendations">LLM counsel</a>
+      <a href="#recommendations">AI Picks</a>
     </nav>
   </div>
 </header>
@@ -1005,7 +1011,7 @@
   <div class="container">
     <div class="section-header">
       <div>
-        <h2 class="section-heading">LLM Counsel</h2>
+        <h2 class="section-heading">AI Picks</h2>
         <p class="section-subtitle">Two models, one shelf, and a chance to see where they agree or diverge.</p>
       </div>
     </div>
@@ -1462,6 +1468,7 @@ function renderRecommendations(recommendations) {
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
                   ${overlap.has(bookKey) ? '<span class="agree-badge">Both agree</span>' : ''}
+                  ${book.from_to_read ? '<span class="to-read-badge">On your list</span>' : ''}
                   <span class="confidence-badge ${escHtml((book.confidence || 'medium').toLowerCase())}">${escHtml(book.confidence || 'medium')}</span>
                 </div>
               </div>

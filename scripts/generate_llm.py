@@ -112,15 +112,19 @@ def build_recommendations_prompt(snapshot: dict[str, Any]) -> str:
         '    {\n'
         '      "title": "Book title",\n'
         '      "author": "Author name",\n'
-        '      "reason": "2-3 sentences tied to concrete books or patterns in the shelf",\n'
-        '      "confidence": "high"\n'
+        '      "reason": "2-3 sentences tied to concrete books, reviews, or patterns in the shelf",\n'
+        '      "confidence": "high",\n'
+        '      "from_to_read": false\n'
         "    }\n"
         "  ],\n"
         '  "reasoning": "3-4 sentences about the overall strategy"\n'
         "}\n\n"
         "Rules:\n"
         "- Recommend exactly 5 books if possible.\n"
-        "- Do not recommend any book already present in read, currently_reading, or to_read.\n"
+        "- Do not recommend any book already present in read or currently_reading.\n"
+        "- You MAY recommend books from the to_read shelf — if you do, set from_to_read to true and explain why that book is particularly well-suited given the reading history.\n"
+        "- Use the reader's reviews (my_review field) as the primary evidence for their preferences — reviews reveal what they actually valued or disliked, not just what they finished.\n"
+        "- Treat high ratings without a review as weaker signal than a detailed review at any rating.\n"
         "- Explain each recommendation by referencing specific books, reviews, or patterns from the library.\n"
         '- Do not use generic phrases like "if you liked this genre".\n'
         '- Confidence must be one of: "high", "medium", "low".\n'
@@ -197,6 +201,7 @@ def normalize_recommendations(
         if not title or not author or not reason or key in seen or key in existing_books:
             continue
 
+        from_to_read = bool(item.get("from_to_read"))
         seen.add(key)
         cleaned_books.append(
             {
@@ -204,6 +209,7 @@ def normalize_recommendations(
                 "author": author,
                 "reason": reason,
                 "confidence": confidence,
+                "from_to_read": from_to_read,
             }
         )
 
@@ -275,16 +281,20 @@ async def call_openai_json(
 
 async def with_retry(coro_factory, label: str) -> dict[str, Any]:
     last_error: Exception | None = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             return await coro_factory()
         except Exception as exc:  # noqa: BLE001 - surface clean provider errors to cache
             last_error = exc
-            if isinstance(exc, httpx.HTTPStatusError):
-                status_code = exc.response.status_code
-                if status_code in {429, 500, 502, 503, 504} and attempt == 0:
-                    await asyncio.sleep(2)
-            if attempt == 0:
+            if attempt < 2:
+                if isinstance(exc, httpx.HTTPStatusError):
+                    status_code = exc.response.status_code
+                    if status_code == 429:
+                        retry_after = exc.response.headers.get("retry-after")
+                        delay = float(retry_after) if retry_after else 60.0
+                        await asyncio.sleep(delay)
+                    elif status_code in {500, 502, 503, 504}:
+                        await asyncio.sleep(2 * (attempt + 1))
                 continue
     raise RuntimeError(f"{label} failed: {last_error}") from last_error
 
@@ -346,7 +356,7 @@ async def generate_cache_payload(
     snapshot = build_library_snapshot(books_payload)
     all_books = {
         normalize_book_key(book.get("title", ""), book.get("author", ""))
-        for shelf in ("read", "currently_reading", "to_read")
+        for shelf in ("read", "currently_reading")
         for book in books_payload.get("books", {}).get(shelf, [])
     }
 

@@ -6,7 +6,7 @@ Personal reading site for [book.tanxy.net](https://book.tanxy.net), built from a
 
 - Parses a Goodreads export into structured `books.json`
 - Generates a build-time taste profile from the read shelf
-- Generates side-by-side recommendation sets from Anthropic and OpenAI
+- Generates side-by-side AI Picks (recommendations) from Anthropic and OpenAI, using reviews as primary signal; can surface books already on the to-read shelf
 - Serves everything through a small FastAPI backend
 - Renders a single-file frontend with search, filters, sort controls, and expandable book cards
 
@@ -72,7 +72,7 @@ make dev
 
 That serves:
 
-- Site: `http://localhost:8000`
+- Site: `http://localhost:8010`
 - API: `http://127.0.0.1:8001`
 
 ## Build targets
@@ -92,7 +92,7 @@ make deploy         # build + rsync site/data/api/deploy assets to the VPS
 
 - `GET /api/books`
 - `GET /api/taste-profile`
-- `GET /api/recommendations`
+- `GET /api/recommendations` — "AI Picks": side-by-side Anthropic + OpenAI recommendations; includes `from_to_read: true` when a book comes from the to-read shelf
 - `GET /api/health`
 
 All API responses are read from disk-backed JSON files. Visitors never trigger live LLM calls.
