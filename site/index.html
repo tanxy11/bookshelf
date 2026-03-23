@@ -216,11 +216,13 @@
     .section-count,
     .chip,
     .confidence-badge,
-    .agree-badge {
+    .agree-badge,
+    .to-read-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 5px 10px;
+      min-height: 30px;
       border-radius: 999px;
       border: 1px solid rgba(122, 92, 62, 0.14);
       font-size: .68rem;
@@ -260,10 +262,36 @@
       border-color: rgba(94, 105, 84, 0.22);
     }
 
+    .recommendation-badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
     .to-read-badge {
-      color: var(--accent);
-      background: rgba(122, 92, 62, 0.08);
-      border-color: rgba(122, 92, 62, 0.22);
+      gap: 6px;
+      padding: 5px 10px 5px 8px;
+      border-color: rgba(122, 92, 62, 0.18);
+      background:
+        linear-gradient(180deg, rgba(255, 252, 247, 0.94), rgba(241, 232, 219, 0.88)),
+        rgba(122, 92, 62, 0.06);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+      color: var(--accent-deep);
+      font-size: .68rem;
+      letter-spacing: .02em;
+      line-height: 1;
+      text-transform: none;
+    }
+
+    .to-read-badge::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(122, 92, 62, 0.48);
+      box-shadow: 0 0 0 3px rgba(122, 92, 62, 0.08);
     }
 
     .taste-profile {
@@ -1466,7 +1494,7 @@ function renderRecommendations(recommendations) {
                   <div class="recommendation-title">${escHtml(book.title)}</div>
                   <div class="recommendation-author">${escHtml(book.author)}</div>
                 </div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                <div class="recommendation-badges">
                   ${overlap.has(bookKey) ? '<span class="agree-badge">Both agree</span>' : ''}
                   ${book.from_to_read ? '<span class="to-read-badge">On your list</span>' : ''}
                   <span class="confidence-badge ${escHtml((book.confidence || 'medium').toLowerCase())}">${escHtml(book.confidence || 'medium')}</span>
