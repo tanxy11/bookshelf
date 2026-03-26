@@ -192,5 +192,6 @@ make deploy-staging
 Cloudflare/manual setup still needed:
 
 - Add `dev.book.tanxy.net` pointing to the same VPS IP as production
+- If the nested subdomain has TLS handshake problems while proxied through Cloudflare, switch `dev.book.tanxy.net` to `DNS only` until edge cert coverage is in place
 - After DNS resolves, install a TLS cert for `dev.book.tanxy.net`
 - Put the staging env file on the server at `/etc/bookshelf-staging.env`
