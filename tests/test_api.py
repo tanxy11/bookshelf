@@ -99,6 +99,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["generated_at"], "2026-03-22T13:00:00Z")
+        self.assertEqual(payload["environment"], "production")
+        self.assertFalse(payload["dry_run"])
         self.assertTrue(payload["has_taste_profile"])
         self.assertTrue(payload["has_recommendations"])
 

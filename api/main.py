@@ -15,11 +15,12 @@ load_env_file(ROOT_DIR / ".env")
 BOOKS_DATA_FILE = Path(os.getenv("BOOKS_DATA", "data/books.json"))
 LLM_CACHE_FILE = Path(os.getenv("LLM_CACHE_DATA", "data/llm_cache.json"))
 GOODREADS_USER_ID = os.getenv("GOODREADS_USER_ID", "")
+ENVIRONMENT = (os.getenv("ENVIRONMENT", "production") or "production").strip()
 configured_origins = [
     origin.strip()
     for origin in os.getenv(
         "BOOKSHELF_CORS_ORIGINS",
-        "https://book.tanxy.net,http://localhost:8000,http://127.0.0.1:8000",
+        "https://book.tanxy.net,https://dev.book.tanxy.net,http://localhost:8000,http://127.0.0.1:8000",
     ).split(",")
     if origin.strip()
 ]
@@ -75,4 +76,6 @@ async def sync() -> dict:
 
 @app.get("/api/health")
 async def health() -> dict:
-    return store.health()
+    payload = store.health()
+    payload["environment"] = ENVIRONMENT
+    return payload

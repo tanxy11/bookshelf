@@ -26,6 +26,7 @@ from bookshelf_data import (
     compute_books_hash,
     default_books_payload,
     default_llm_cache,
+    env_truthy,
     load_json,
     load_env_file,
     normalize_book_key,
@@ -47,6 +48,40 @@ load_env_file(ROOT_DIR / ".env")
 
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL)
+LLM_DRY_RUN = env_truthy("LLM_DRY_RUN", default=False)
+
+
+def build_mock_taste_profile() -> dict[str, Any]:
+    return {
+        "summary": "[DRY RUN] Mock taste profile",
+        "traits": [
+            {
+                "label": "Mock Trait",
+                "explanation": "This is placeholder data.",
+            }
+        ],
+        "blind_spots": "[DRY RUN] Mock blind spots",
+    }
+
+
+def build_mock_recommendations(model_name: str, prefix: str) -> dict[str, Any]:
+    books = []
+    for index in range(1, 6):
+        books.append(
+            {
+                "title": f"[DRY RUN] {prefix} Pick {index}",
+                "author": f"[DRY RUN] Placeholder Author {index}",
+                "reason": f"[DRY RUN] Placeholder reasoning for {prefix.lower()} pick {index}.",
+                "confidence": "medium",
+                "from_to_read": False,
+            }
+        )
+
+    return {
+        "model": model_name,
+        "books": books,
+        "reasoning": f"[DRY RUN] Placeholder recommendation strategy from {prefix}.",
+    }
 
 
 def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
@@ -340,7 +375,18 @@ async def generate_openai_recommendations(
 
 
 def skip_generation(cache_payload: dict[str, Any], books_hash: str, force: bool) -> bool:
-    return not force and cache_payload.get("books_hash") == books_hash
+    if force or cache_payload.get("books_hash") != books_hash:
+        return False
+
+    recommendations = cache_payload.get("recommendations") or {}
+    opus_model = (recommendations.get("opus") or {}).get("model")
+    gpt_model = (recommendations.get("gpt45") or {}).get("model")
+    cache_dry_run = bool(cache_payload.get("dry_run"))
+    return (
+        cache_dry_run == LLM_DRY_RUN
+        and opus_model == ANTHROPIC_MODEL
+        and gpt_model == OPENAI_MODEL
+    )
 
 
 async def generate_cache_payload(
@@ -366,8 +412,19 @@ async def generate_cache_payload(
     result = default_llm_cache()
     result["books_hash"] = books_hash
     result["generated_at"] = utc_now_iso()
+    result["dry_run"] = LLM_DRY_RUN
     result["recommendations"]["opus"]["model"] = ANTHROPIC_MODEL
     result["recommendations"]["gpt45"]["model"] = OPENAI_MODEL
+
+    if LLM_DRY_RUN:
+        result["taste_profile"] = build_mock_taste_profile()
+        result["recommendations"]["opus"] = build_mock_recommendations(
+            ANTHROPIC_MODEL, "Anthropic"
+        )
+        result["recommendations"]["gpt45"] = build_mock_recommendations(
+            OPENAI_MODEL, "OpenAI"
+        )
+        return result, False
 
     timeout = httpx.Timeout(REQUEST_TIMEOUT_SECONDS)
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -457,6 +514,7 @@ def main() -> int:
 
     print(f"Wrote {cache_path}")
     print(f"  books_hash: {generated_payload.get('books_hash')}")
+    print(f"  dry_run: {'true' if generated_payload.get('dry_run') else 'false'}")
     print(f"  taste_profile: {'ok' if taste_ok else 'error'}")
     print(
         "  recommendations: "
