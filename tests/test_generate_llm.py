@@ -56,8 +56,20 @@ class GenerateLlmTests(unittest.TestCase):
         books_hash = compute_books_hash(books_payload["books"]["read"])
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
+        cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
+        cache_payload["recommendations"]["gpt45"]["model"] = generate_llm.OPENAI_MODEL
         self.assertTrue(generate_llm.skip_generation(cache_payload, books_hash, force=False))
         self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=True))
+
+    def test_skip_generation_rebuilds_when_runtime_config_changes(self):
+        books_payload = sample_books_payload()
+        books_hash = compute_books_hash(books_payload["books"]["read"])
+        cache_payload = default_llm_cache()
+        cache_payload["books_hash"] = books_hash
+        cache_payload["recommendations"]["opus"]["model"] = "old-anthropic-model"
+        cache_payload["recommendations"]["gpt45"]["model"] = "old-openai-model"
+
+        self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=False))
 
     def test_partial_success_writes_cache_payload(self):
         books_payload = sample_books_payload()
@@ -101,6 +113,27 @@ class GenerateLlmTests(unittest.TestCase):
         self.assertEqual(payload["recommendations"]["gpt45"]["model"], "gpt-test")
         self.assertIn("error", payload["recommendations"]["opus"])
         self.assertEqual(payload["taste_profile"]["summary"], "Sharp.")
+        self.assertFalse(payload["dry_run"])
+
+    def test_dry_run_skips_live_provider_calls(self):
+        books_payload = sample_books_payload()
+        cache_payload = default_llm_cache()
+
+        with (
+            patch.object(generate_llm, "LLM_DRY_RUN", True),
+            patch.object(generate_llm, "generate_taste_profile", AsyncMock(side_effect=AssertionError("should not call providers"))),
+            patch.object(generate_llm, "generate_anthropic_recommendations", AsyncMock(side_effect=AssertionError("should not call providers"))),
+            patch.object(generate_llm, "generate_openai_recommendations", AsyncMock(side_effect=AssertionError("should not call providers"))),
+        ):
+            payload, skipped = asyncio.run(
+                generate_llm.generate_cache_payload(books_payload, cache_payload, force=False)
+            )
+
+        self.assertFalse(skipped)
+        self.assertTrue(payload["dry_run"])
+        self.assertEqual(payload["taste_profile"]["summary"], "[DRY RUN] Mock taste profile")
+        self.assertEqual(payload["recommendations"]["opus"]["books"][0]["title"], "[DRY RUN] Anthropic Pick 1")
+        self.assertEqual(payload["recommendations"]["gpt45"]["books"][0]["title"], "[DRY RUN] OpenAI Pick 1")
 
     def test_main_persists_generated_cache(self):
         books_payload = sample_books_payload()

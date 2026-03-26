@@ -1,0 +1,16 @@
+[Unit]
+Description=Bookshelf Staging API (FastAPI + uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/dev.book.tanxy.net
+EnvironmentFile=/etc/bookshelf-staging.env
+ExecStart=/var/www/dev.book.tanxy.net/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8002
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -38,6 +38,13 @@ def load_env_file(path: Path, override: bool = False) -> bool:
     return True
 
 
+def env_truthy(name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def default_books_payload() -> dict[str, Any]:
     return {
         "generated_at": None,
@@ -61,6 +68,7 @@ def default_llm_cache() -> dict[str, Any]:
     return {
         "books_hash": "",
         "generated_at": None,
+        "dry_run": False,
         "taste_profile": {},
         "recommendations": {
             "opus": {"model": None},
@@ -176,6 +184,7 @@ class BookshelfStore:
             "books_generated_at": books_payload.get("generated_at"),
             "llm_generated_at": llm_cache.get("generated_at"),
             "books_hash": llm_cache.get("books_hash"),
+            "dry_run": bool(llm_cache.get("dry_run")),
             "has_books": bool(books_payload.get("books", {}).get("read")),
             "has_taste_profile": self.taste_profile() is not None,
             "has_recommendations": self.recommendations() is not None,

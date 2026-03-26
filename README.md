@@ -46,6 +46,8 @@ Optional:
 
 - `ANTHROPIC_MODEL`
 - `OPENAI_MODEL`
+- `LLM_DRY_RUN`
+- `ENVIRONMENT`
 - `BOOKS_DATA`
 - `LLM_CACHE_DATA`
 - `BOOKSHELF_CORS_ORIGINS`
@@ -82,11 +84,14 @@ make install        # create .venv and install api dependencies
 make parse          # CSV -> data/books.json
 make llm            # data/books.json -> data/llm_cache.json (skips if unchanged)
 make llm-force      # always regenerate LLM outputs
+make llm-staging    # staging cache with dry-run or cheap-model overrides
+make llm-staging-force
 make refresh-data   # parse + llm
 make build          # alias for refresh-data
 make build FORCE_LLM=1
 make dev            # run FastAPI + static site locally
 make deploy         # rsync current site/data/api/deploy assets to the VPS
+make deploy-staging # rsync current site/data/api/deploy assets to the staging VPS path
 ```
 
 ## API
@@ -136,6 +141,8 @@ OpenAI powers:
 
 If one recommendation provider fails, the other still gets cached and displayed.
 
+If `LLM_DRY_RUN=true`, the generator skips live provider calls and writes placeholder content marked with `[DRY RUN]`. This is intended for staging so we can exercise the full deploy and UI flow without burning API credits.
+
 ## Deployment notes
 
 `make deploy` syncs:
@@ -158,5 +165,32 @@ make refresh-data
 After deploy, restart the service on the server if API code changed:
 
 ```bash
-sudo systemctl restart bookshelf
+sudo systemctl restart bookshelf-api
 ```
+
+## Staging
+
+Staging is configured for `dev.book.tanxy.net` on the same VPS with its own app root, service, and API port:
+
+- App root: `/var/www/dev.book.tanxy.net`
+- API port: `8002`
+- systemd unit: `bookshelf-staging`
+- Nginx configs: `deploy/nginx.staging.conf` and `deploy/nginx.staging.bootstrap.conf`
+
+By default, `make llm-staging` writes `data/llm_cache.staging.json` in `LLM_DRY_RUN=true` mode. If you want real staging LLM calls, set `STAGING_LLM_DRY_RUN=0`; the Makefile will use cheaper staging defaults:
+
+- Anthropic: `claude-3-haiku-20240307`
+- OpenAI: `gpt-4.1-nano`
+
+Typical flow:
+
+```bash
+make llm-staging
+make deploy-staging
+```
+
+Cloudflare/manual setup still needed:
+
+- Add `dev.book.tanxy.net` pointing to the same VPS IP as production
+- After DNS resolves, install a TLS cert for `dev.book.tanxy.net`
+- Put the staging env file on the server at `/etc/bookshelf-staging.env`
