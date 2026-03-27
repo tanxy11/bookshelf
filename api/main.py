@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from bookshelf_data import BookshelfStore, load_env_file
-from api.sync import sync_from_rss
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT_DIR))
+
+from bookshelf_data import (
+    BookshelfStore,
+    default_books_payload,
+    default_llm_cache,
+    load_env_file,
+    load_json,
+    save_json,
+    successful_recommendations,
+    successful_taste_profile,
+)
+from api.sync import sync_from_rss
+from scripts.generate_llm import generate_cache_payload
+
 load_env_file(ROOT_DIR / ".env")
 
 BOOKS_DATA_FILE = Path(os.getenv("BOOKS_DATA", "data/books.json"))
@@ -43,6 +56,23 @@ app.add_middleware(
 )
 
 
+async def refresh_llm_cache(books_path: Path, llm_cache_path: Path) -> dict:
+    books_payload = load_json(books_path, default_books_payload)
+    cache_payload = load_json(llm_cache_path, default_llm_cache)
+
+    generated_payload, skipped = await generate_cache_payload(books_payload, cache_payload)
+    if not skipped:
+        save_json(llm_cache_path, generated_payload)
+
+    return {
+        "status": "skipped" if skipped else "ok",
+        "generated_at": generated_payload.get("generated_at"),
+        "books_hash": generated_payload.get("books_hash"),
+        "has_taste_profile": successful_taste_profile(generated_payload) is not None,
+        "has_recommendations": successful_recommendations(generated_payload) is not None,
+    }
+
+
 @app.get("/api/books")
 async def get_books() -> dict:
     books_payload = store.books()
@@ -71,7 +101,12 @@ async def get_recommendations() -> dict:
 async def sync() -> dict:
     if not GOODREADS_USER_ID:
         raise HTTPException(status_code=500, detail="GOODREADS_USER_ID not set.")
-    return await sync_from_rss(GOODREADS_USER_ID, BOOKS_DATA_FILE)
+    result = await sync_from_rss(GOODREADS_USER_ID, BOOKS_DATA_FILE)
+    try:
+        result["llm"] = await refresh_llm_cache(BOOKS_DATA_FILE, LLM_CACHE_FILE)
+    except Exception as exc:  # noqa: BLE001 - keep RSS sync successful even if LLM refresh fails
+        result["llm"] = {"status": "error", "error": str(exc)}
+    return result
 
 
 @app.get("/api/health")

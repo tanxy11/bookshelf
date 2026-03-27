@@ -8,7 +8,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api"))
 sys.modules.setdefault("httpx", SimpleNamespace(AsyncClient=object))
 
-from sync import _dedupe_shelf, _merge
+from sync import _dedupe_shelf, _merge, _sort_shelf
 
 
 class MergeRegressionTests(unittest.TestCase):
@@ -101,6 +101,21 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(duplicate["goodreads_id"], "gid-1")
         self.assertEqual(duplicate["my_review"], "kept")
         self.assertEqual(duplicate["date_read"], "2024-01-10")
+
+    def test_sort_shelf_respects_field_priority_and_keeps_undated_last(self):
+        books = [
+            {"title": "No Date"},
+            {"title": "Earlier", "date_read": "2024-01-10"},
+            {"title": "Latest", "date_read": "2024-03-05"},
+            {"title": "Fallback Added", "date_added": "2024-02-14"},
+        ]
+
+        sorted_books = _sort_shelf(books, "date_added", "date_read")
+
+        self.assertEqual(
+            [book["title"] for book in sorted_books],
+            ["Fallback Added", "Latest", "Earlier", "No Date"],
+        )
 
 
 if __name__ == "__main__":

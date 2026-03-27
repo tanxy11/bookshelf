@@ -223,6 +223,16 @@ def _dedupe_shelf(books: list[dict]) -> list[dict]:
     return deduped
 
 
+def _sort_shelf(books: list[dict], *date_fields: str) -> list[dict]:
+    def sort_key(book: dict) -> tuple[str, ...]:
+        return tuple((book.get(field) or "").strip() for field in date_fields)
+
+    with_date = [book for book in books if any((book.get(field) or "").strip() for field in date_fields)]
+    without_date = [book for book in books if not any((book.get(field) or "").strip() for field in date_fields)]
+    with_date.sort(key=sort_key, reverse=True)
+    return with_date + without_date
+
+
 # ── Stats ──────────────────────────────────────────────────────────────────────
 
 def _compute_stats(data: dict) -> dict:
@@ -278,14 +288,14 @@ async def sync_from_rss(user_id: str, data_file: Path) -> dict:
     # Merge
     added, updated = _merge(data, rss_by_shelf)
 
-    # Re-sort read by date_read desc, no-date books at end
-    with_date    = [b for b in data["books"]["read"] if b.get("date_read")]
-    without_date = [b for b in data["books"]["read"] if not b.get("date_read")]
-    with_date.sort(key=lambda b: b["date_read"], reverse=True)
-    data["books"]["read"] = with_date + without_date
-
     for shelf_key in ("read", "currently_reading", "to_read"):
         data["books"][shelf_key] = _dedupe_shelf(data["books"][shelf_key])
+
+    data["books"]["read"] = _sort_shelf(data["books"]["read"], "date_read", "date_added")
+    data["books"]["currently_reading"] = _sort_shelf(
+        data["books"]["currently_reading"], "date_added", "date_read"
+    )
+    data["books"]["to_read"] = _sort_shelf(data["books"]["to_read"], "date_added")
 
     # Recompute stats
     data["stats"] = _compute_stats(data)

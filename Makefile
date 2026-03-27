@@ -4,6 +4,7 @@ VENV_PY   := $(VENV_DIR)/bin/python
 RUN_PYTHON := $(if $(wildcard $(VENV_PY)),$(VENV_PY),$(PYTHON))
 VPS_HOST  ?= root@134.199.239.64
 VPS_PATH  ?= /var/www/book.tanxy.net
+VPS_SERVICE ?= bookshelf-api
 STAGING_VPS_HOST ?= $(VPS_HOST)
 STAGING_VPS_PATH ?= /var/www/dev.book.tanxy.net
 STAGING_DOMAIN ?= dev.book.tanxy.net
@@ -14,7 +15,7 @@ STAGING_ANTHROPIC_MODEL ?= claude-3-haiku-20240307
 STAGING_OPENAI_MODEL ?= gpt-4.1-nano
 FORCE_LLM ?= 0
 
-.PHONY: install parse llm llm-force llm-staging llm-staging-force build refresh-data dev deploy deploy-staging
+.PHONY: install parse llm llm-force llm-staging llm-staging-force build refresh-data dev deploy deploy-sync restart-api deploy-staging deploy-staging-sync restart-staging-api
 
 install:
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -70,30 +71,42 @@ dev: parse
 		$(RUN_PYTHON) -m uvicorn api.main:app --host 127.0.0.1 --port 8001 --reload & \
 		cd site && $(RUN_PYTHON) -m http.server 8000
 
-deploy: llm
-	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/site $(VPS_PATH)/data $(VPS_PATH)/api $(VPS_PATH)/deploy'
+deploy: llm deploy-sync restart-api
+	@echo "Production deploy complete for $(VPS_HOST):$(VPS_PATH)"
+	@echo "Site data came from the current local data/books.json and data/llm_cache.json."
+
+deploy-sync:
+	@echo "Syncing production files to $(VPS_HOST):$(VPS_PATH)"
+	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/site $(VPS_PATH)/data $(VPS_PATH)/api $(VPS_PATH)/scripts $(VPS_PATH)/deploy'
 	rsync -avz --delete site/ $(VPS_HOST):$(VPS_PATH)/site/
 	rsync -avz data/books.json data/llm_cache.json $(VPS_HOST):$(VPS_PATH)/data/
 	rsync -avz api/ $(VPS_HOST):$(VPS_PATH)/api/
+	rsync -avz scripts/ $(VPS_HOST):$(VPS_PATH)/scripts/
 	rsync -avz bookshelf_data.py $(VPS_HOST):$(VPS_PATH)/
 	rsync -avz deploy/nginx.conf deploy/bookshelf.service $(VPS_HOST):$(VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(VPS_HOST):$(VPS_PATH)/
-	@echo "Deploy sync complete for $(VPS_HOST):$(VPS_PATH)"
-	@echo "Deployed using the current data/books.json (no CSV re-parse)."
-	@echo "If API code changed, restart the systemd service on the VPS:"
-	@echo "  sudo systemctl restart bookshelf-api"
 
-deploy-staging: llm-staging
-	ssh $(STAGING_VPS_HOST) 'mkdir -p $(STAGING_VPS_PATH)/site $(STAGING_VPS_PATH)/data $(STAGING_VPS_PATH)/api $(STAGING_VPS_PATH)/deploy'
+restart-api:
+	@echo "Restarting production service $(VPS_SERVICE)"
+	ssh $(VPS_HOST) "systemctl restart $(VPS_SERVICE) && systemctl is-active $(VPS_SERVICE)"
+
+deploy-staging: llm-staging deploy-staging-sync restart-staging-api
+	@echo "Staging deploy complete for $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)"
+	@echo "Staging domain: https://$(STAGING_DOMAIN)"
+	@echo "Dry run mode: $(if $(filter 1,$(STAGING_LLM_DRY_RUN)),enabled,disabled)"
+
+deploy-staging-sync:
+	@echo "Syncing staging files to $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)"
+	ssh $(STAGING_VPS_HOST) 'mkdir -p $(STAGING_VPS_PATH)/site $(STAGING_VPS_PATH)/data $(STAGING_VPS_PATH)/api $(STAGING_VPS_PATH)/scripts $(STAGING_VPS_PATH)/deploy'
 	rsync -avz --delete site/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/site/
 	rsync -avz data/books.json $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/data/
 	rsync -avz $(STAGING_LLM_CACHE) $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/data/llm_cache.json
 	rsync -avz api/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/api/
+	rsync -avz scripts/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/scripts/
 	rsync -avz bookshelf_data.py $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/
 	rsync -avz deploy/nginx.staging.conf deploy/nginx.staging.bootstrap.conf deploy/bookshelf-staging.service deploy/staging.env.example $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/
-	@echo "Staging sync complete for $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)"
-	@echo "Staging domain: https://$(STAGING_DOMAIN)"
-	@echo "Dry run mode: $(if $(filter 1,$(STAGING_LLM_DRY_RUN)),enabled,disabled)"
-	@echo "If API code changed, restart the staging service on the VPS:"
-	@echo "  sudo systemctl restart $(STAGING_SERVICE)"
+
+restart-staging-api:
+	@echo "Restarting staging service $(STAGING_SERVICE)"
+	ssh $(STAGING_VPS_HOST) "systemctl restart $(STAGING_SERVICE) && systemctl is-active $(STAGING_SERVICE)"

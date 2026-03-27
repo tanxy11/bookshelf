@@ -394,8 +394,7 @@ async def generate_cache_payload(
     cache_payload: dict[str, Any],
     force: bool = False,
 ) -> tuple[dict[str, Any], bool]:
-    read_books = books_payload.get("books", {}).get("read", [])
-    books_hash = compute_books_hash(read_books)
+    books_hash = compute_books_hash(books_payload)
     if skip_generation(cache_payload, books_hash, force):
         return cache_payload, True
 

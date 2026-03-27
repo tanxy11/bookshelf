@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 try:
     from fastapi.testclient import TestClient
@@ -103,6 +104,58 @@ class ApiTests(unittest.TestCase):
         self.assertFalse(payload["dry_run"])
         self.assertTrue(payload["has_taste_profile"])
         self.assertTrue(payload["has_recommendations"])
+
+    def test_sync_endpoint_refreshes_llm_cache_after_rss_merge(self):
+        generated_cache = {
+            "books_hash": "fresh-hash",
+            "generated_at": "2026-03-27T18:00:00Z",
+            "dry_run": False,
+            "taste_profile": {
+                "summary": "Updated summary",
+                "traits": [{"label": "Trait", "explanation": "Explanation"}],
+                "blind_spots": "Blind spots",
+            },
+            "recommendations": {
+                "opus": {
+                    "model": "claude-test",
+                    "books": [{"title": "Rec B", "author": "Author B", "reason": "Specific.", "confidence": "high"}],
+                    "reasoning": "Updated strategy",
+                },
+                "gpt45": {"model": "gpt-test", "error": "temporarily unavailable"},
+            },
+        }
+
+        self.api_main.GOODREADS_USER_ID = "reader-123"
+        with (
+            patch.object(
+                self.api_main,
+                "sync_from_rss",
+                AsyncMock(
+                    return_value={
+                        "status": "ok",
+                        "generated_at": "2026-03-27T17:59:00Z",
+                        "added": 1,
+                        "updated": 0,
+                    }
+                ),
+            ),
+            patch.object(
+                self.api_main,
+                "generate_cache_payload",
+                AsyncMock(return_value=(generated_cache, False)),
+            ),
+        ):
+            response = self.client.post("/api/sync")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["llm"]["status"], "ok")
+        self.assertEqual(payload["llm"]["books_hash"], "fresh-hash")
+
+        saved_cache = json.loads(self.llm_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved_cache["books_hash"], "fresh-hash")
+        self.assertEqual(saved_cache["taste_profile"]["summary"], "Updated summary")
 
 
 if __name__ == "__main__":

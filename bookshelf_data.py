@@ -104,18 +104,30 @@ def normalize_book_key(title: str, author: str) -> tuple[str, str]:
     return (title or "").strip().lower(), (author or "").strip().lower()
 
 
-def compute_books_hash(read_books: list[dict[str, Any]]) -> str:
-    fingerprint = sorted(
-        [
-            [
-                (book.get("title") or "").strip(),
-                (book.get("author") or "").strip(),
-                int(book.get("my_rating") or 0),
-                (book.get("my_review") or "").strip(),
-            ]
-            for book in read_books
-        ]
-    )
+def _book_hash_entry(book: dict[str, Any], shelf_key: str) -> list[Any]:
+    return [
+        shelf_key,
+        (book.get("title") or "").strip(),
+        (book.get("author") or "").strip(),
+        int(book.get("my_rating") or 0),
+        (book.get("my_review") or "").strip(),
+        (book.get("date_read") or "").strip(),
+        (book.get("date_added") or "").strip(),
+        sorted(str(shelf).strip() for shelf in (book.get("shelves") or []) if str(shelf).strip()),
+    ]
+
+
+def compute_books_hash(books_payload: dict[str, Any] | list[dict[str, Any]]) -> str:
+    if isinstance(books_payload, dict):
+        books_by_shelf = books_payload.get("books", {})
+        fingerprint = sorted(
+            _book_hash_entry(book, shelf_key)
+            for shelf_key in ("read", "currently_reading", "to_read")
+            for book in books_by_shelf.get(shelf_key, [])
+        )
+    else:
+        fingerprint = sorted(_book_hash_entry(book, "read") for book in books_payload)
+
     payload = json.dumps(fingerprint, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

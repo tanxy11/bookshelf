@@ -51,9 +51,19 @@ class GenerateLlmTests(unittest.TestCase):
         reversed_books = list(reversed(books))
         self.assertEqual(compute_books_hash(books), compute_books_hash(reversed_books))
 
+    def test_books_hash_changes_when_non_read_shelf_changes(self):
+        books_payload = sample_books_payload()
+        original_hash = compute_books_hash(books_payload)
+
+        books_payload["books"]["currently_reading"].append(
+            {"title": "Fresh Start", "author": "New Author"}
+        )
+
+        self.assertNotEqual(original_hash, compute_books_hash(books_payload))
+
     def test_skip_generation_when_hash_matches(self):
         books_payload = sample_books_payload()
-        books_hash = compute_books_hash(books_payload["books"]["read"])
+        books_hash = compute_books_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
         cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
@@ -63,7 +73,7 @@ class GenerateLlmTests(unittest.TestCase):
 
     def test_skip_generation_rebuilds_when_runtime_config_changes(self):
         books_payload = sample_books_payload()
-        books_hash = compute_books_hash(books_payload["books"]["read"])
+        books_hash = compute_books_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
         cache_payload["recommendations"]["opus"]["model"] = "old-anthropic-model"
