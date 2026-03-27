@@ -1,0 +1,194 @@
+"""
+SQLite database layer for bookshelf.
+
+Provides schema definition, connection factory, and migration system.
+Uses stdlib sqlite3 only — no ORM, no additional dependencies.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+from typing import Any, Callable
+
+
+# ── Schema (migration 1) ─────────────────────────────────────────────────────
+
+_SCHEMA_V1 = """
+CREATE TABLE IF NOT EXISTS books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    goodreads_id TEXT,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    isbn13 TEXT,
+    my_rating INTEGER DEFAULT 0 CHECK (my_rating BETWEEN 0 AND 5),
+    avg_rating REAL,
+    pages INTEGER,
+    date_read TEXT,
+    date_added TEXT NOT NULL,
+    shelves TEXT,
+    exclusive_shelf TEXT NOT NULL DEFAULT 'to_read'
+        CHECK (exclusive_shelf IN ('read', 'currently_reading', 'to_read')),
+    review TEXT,
+    notes TEXT,
+    cover_url TEXT,
+    google_books_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_books_goodreads_id
+    ON books(goodreads_id) WHERE goodreads_id IS NOT NULL AND goodreads_id != '';
+
+CREATE INDEX IF NOT EXISTS idx_books_exclusive_shelf ON books(exclusive_shelf);
+CREATE INDEX IF NOT EXISTS idx_books_date_read ON books(date_read);
+CREATE INDEX IF NOT EXISTS idx_books_title_author
+    ON books(title COLLATE NOCASE, author COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS llm_cache (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    token_hash TEXT PRIMARY KEY,
+    label TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    last_used TEXT
+);
+"""
+
+
+def _migration_v1(conn: sqlite3.Connection) -> None:
+    conn.executescript(_SCHEMA_V1)
+
+
+# ── Migration registry ────────────────────────────────────────────────────────
+
+MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
+    (1, _migration_v1),
+]
+
+
+# ── Connection factory ────────────────────────────────────────────────────────
+
+def get_connection(db_path: Path | str) -> sqlite3.Connection:
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+# ── Migration runner ──────────────────────────────────────────────────────────
+
+def _ensure_schema_version_table(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        )
+    """)
+
+
+def get_schema_version(conn: sqlite3.Connection) -> int:
+    _ensure_schema_version_table(conn)
+    row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
+    return row[0] or 0
+
+
+def run_migrations(conn: sqlite3.Connection) -> int:
+    _ensure_schema_version_table(conn)
+    current = get_schema_version(conn)
+    applied = 0
+
+    for version, migrate_fn in MIGRATIONS:
+        if version > current:
+            migrate_fn(conn)
+            conn.execute(
+                "INSERT INTO schema_version (version) VALUES (?)", (version,)
+            )
+            conn.commit()
+            applied += 1
+
+    return applied
+
+
+# ── LLM cache helpers ─────────────────────────────────────────────────────────
+
+def get_llm_cache_value(conn: sqlite3.Connection, key: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT value FROM llm_cache WHERE key = ?", (key,)
+    ).fetchone()
+    if row is None:
+        return None
+    return json.loads(row["value"])
+
+
+def set_llm_cache_value(conn: sqlite3.Connection, key: str, value: dict[str, Any]) -> None:
+    conn.execute(
+        "INSERT INTO llm_cache (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+        "created_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+        (key, json.dumps(value, ensure_ascii=False)),
+    )
+    conn.commit()
+
+
+# ── Book helpers ──────────────────────────────────────────────────────────────
+
+def _row_to_book_dict(row: sqlite3.Row) -> dict[str, Any]:
+    """Convert a sqlite3.Row to the dict format the API returns."""
+    d = dict(row)
+    # Parse shelves from JSON string back to list
+    shelves_raw = d.pop("shelves", None)
+    d["shelves"] = json.loads(shelves_raw) if shelves_raw else []
+    # API returns my_review, not review, for frontend compat
+    d["my_review"] = d.pop("review", None)
+    return d
+
+
+def insert_book(conn: sqlite3.Connection, book: dict[str, Any]) -> int:
+    shelves = json.dumps(book.get("shelves") or [], ensure_ascii=False)
+    cursor = conn.execute(
+        """INSERT INTO books
+           (goodreads_id, title, author, isbn13, my_rating, avg_rating,
+            pages, date_read, date_added, shelves, exclusive_shelf,
+            review, notes, cover_url, google_books_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            book.get("goodreads_id") or None,
+            book["title"],
+            book["author"],
+            book.get("isbn13") or None,
+            book.get("my_rating", 0),
+            book.get("avg_rating"),
+            book.get("pages"),
+            book.get("date_read") or None,
+            book.get("date_added") or "",
+            shelves,
+            book.get("exclusive_shelf", "to_read"),
+            book.get("review") or book.get("my_review") or None,
+            book.get("notes") or None,
+            book.get("cover_url") or None,
+            book.get("google_books_id") or None,
+        ),
+    )
+    return cursor.lastrowid
+
+
+def get_books_by_shelf(conn: sqlite3.Connection, shelf: str) -> list[dict[str, Any]]:
+    if shelf == "read":
+        order = "date_read DESC, date_added DESC"
+    elif shelf == "currently_reading":
+        order = "date_added DESC, date_read DESC"
+    else:
+        order = "date_added DESC"
+
+    rows = conn.execute(
+        f"SELECT * FROM books WHERE exclusive_shelf = ? ORDER BY {order}",
+        (shelf,),
+    ).fetchall()
+    return [_row_to_book_dict(row) for row in rows]

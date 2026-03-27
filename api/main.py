@@ -11,6 +11,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
 from bookshelf_data import (
+    BookshelfDB,
     BookshelfStore,
     default_books_payload,
     default_llm_cache,
@@ -25,6 +26,7 @@ from scripts.generate_llm import generate_cache_payload
 
 load_env_file(ROOT_DIR / ".env")
 
+DB_PATH = os.getenv("DB_PATH", "").strip()
 BOOKS_DATA_FILE = Path(os.getenv("BOOKS_DATA", "data/books.json"))
 LLM_CACHE_FILE = Path(os.getenv("LLM_CACHE_DATA", "data/llm_cache.json"))
 GOODREADS_USER_ID = os.getenv("GOODREADS_USER_ID", "")
@@ -45,7 +47,11 @@ dev_origins = [
 ]
 CORS_ORIGINS = list(dict.fromkeys([*configured_origins, *dev_origins]))
 
-store = BookshelfStore(BOOKS_DATA_FILE, LLM_CACHE_FILE)
+USE_SQLITE = bool(DB_PATH and Path(DB_PATH).exists())
+if USE_SQLITE:
+    store = BookshelfDB(Path(DB_PATH))
+else:
+    store = BookshelfStore(BOOKS_DATA_FILE, LLM_CACHE_FILE)
 
 app = FastAPI(title="Bookshelf API")
 app.add_middleware(
@@ -76,8 +82,11 @@ async def refresh_llm_cache(books_path: Path, llm_cache_path: Path) -> dict:
 @app.get("/api/books")
 async def get_books() -> dict:
     books_payload = store.books()
-    if not books_payload.get("books", {}).get("read") and not BOOKS_DATA_FILE.exists():
-        raise HTTPException(status_code=503, detail="books.json not found. Run `make parse` first.")
+    if not books_payload.get("books", {}).get("read"):
+        if USE_SQLITE:
+            raise HTTPException(status_code=503, detail="No books found in database.")
+        if not BOOKS_DATA_FILE.exists():
+            raise HTTPException(status_code=503, detail="books.json not found. Run `make parse` first.")
     return books_payload
 
 
@@ -113,4 +122,5 @@ async def sync() -> dict:
 async def health() -> dict:
     payload = store.health()
     payload["environment"] = ENVIRONMENT
+    payload["data_backend"] = "sqlite" if USE_SQLITE else "json"
     return payload

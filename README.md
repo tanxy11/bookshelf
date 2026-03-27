@@ -4,7 +4,7 @@ Personal reading site for [book.tanxy.net](https://book.tanxy.net), built from a
 
 ## What it does
 
-- Parses a Goodreads export into structured `books.json`
+- Stores book data in a self-owned SQLite database (migrated from Goodreads CSV)
 - Generates a build-time taste profile from the read shelf
 - Generates side-by-side AI Picks (recommendations) from Anthropic and OpenAI, using reviews as primary signal; can surface books already on the to-read shelf
 - Serves everything through a small FastAPI backend
@@ -18,18 +18,21 @@ bookshelf/
 │   ├── main.py
 │   └── requirements.txt
 ├── data/
+│   ├── bookshelf.db              # SQLite database (canonical, gitignored)
 │   ├── goodreads_library_export.csv
-│   ├── books.json
-│   └── llm_cache.json
+│   ├── books.json                # Legacy JSON (fallback)
+│   └── llm_cache.json            # Legacy JSON (fallback)
 ├── deploy/
 │   ├── bookshelf.service
 │   └── nginx.conf
 ├── scripts/
 │   ├── generate_llm.py
+│   ├── migrate_json_to_sqlite.py # One-time migration
 │   └── parse_goodreads.py
 ├── site/
 │   └── index.html
 ├── bookshelf_data.py
+├── db.py                         # SQLite schema + migrations
 └── Makefile
 ```
 
@@ -44,12 +47,14 @@ Required:
 
 Optional:
 
+- `DB_PATH` — path to SQLite database; enables SQLite backend when set and file exists
 - `ANTHROPIC_MODEL`
 - `OPENAI_MODEL`
 - `LLM_DRY_RUN`
 - `ENVIRONMENT`
-- `BOOKS_DATA`
-- `LLM_CACHE_DATA`
+- `BOOKSHELF_AUTH_TOKEN` — bearer token for write endpoints
+- `BOOKS_DATA` — JSON fallback when `DB_PATH` is unset
+- `LLM_CACHE_DATA` — JSON fallback when `DB_PATH` is unset
 - `BOOKSHELF_CORS_ORIGINS`
 
 `OPENAI_MODEL` defaults to `gpt-4.1` in this repo so the OpenAI side stays configurable even if older preview IDs are unavailable.
@@ -101,7 +106,7 @@ make deploy-staging # rsync current site/data/api/deploy assets to the staging V
 - `GET /api/recommendations` — "AI Picks": side-by-side Anthropic + OpenAI recommendations; includes `from_to_read: true` when a book comes from the to-read shelf
 - `GET /api/health`
 
-All API responses are read from disk-backed JSON files. Visitors never trigger live LLM calls.
+All API responses are read from SQLite (or JSON files as fallback). Visitors never trigger live LLM calls.
 
 ## Local validation checklist
 
@@ -143,24 +148,21 @@ If one recommendation provider fails, the other still gets cached and displayed.
 
 If `LLM_DRY_RUN=true`, the generator skips live provider calls and writes placeholder content marked with `[DRY RUN]`. This is intended for staging so we can exercise the full deploy and UI flow without burning API credits.
 
-## Deployment notes
+## SQLite migration
 
-`make deploy` syncs:
-
-- `site/`
-- `data/books.json`
-- `data/llm_cache.json`
-- `api/`
-- `deploy/nginx.conf`
-- `deploy/bookshelf.service`
-
-It also refreshes `data/llm_cache.json` from the current `data/books.json`, but it does not rebuild `books.json` from `data/goodreads_library_export.csv`.
-
-If you explicitly want to replace local synced data with a fresh CSV import, run:
+The canonical data store is now SQLite. To migrate from JSON:
 
 ```bash
-make refresh-data
+python scripts/migrate_json_to_sqlite.py --db data/bookshelf.db
 ```
+
+Then set `DB_PATH=data/bookshelf.db` in your `.env`. The migration script generates an auth token — save it as `BOOKSHELF_AUTH_TOKEN` in `.env`.
+
+The app auto-detects: if `DB_PATH` is set and the file exists, it uses SQLite. Otherwise it falls back to JSON files.
+
+## Deployment notes
+
+`make deploy` syncs code and data to the VPS. Once SQLite is active on the VPS, the database there is canonical — deploys should sync code only, not overwrite the VPS database.
 
 After deploy, restart the service on the server if API code changed:
 
