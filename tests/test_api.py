@@ -62,6 +62,8 @@ class ApiTests(unittest.TestCase):
         )
 
         self.original_env = os.environ.copy()
+        os.environ["DB_PATH"] = ""
+        os.environ["BOOKSHELF_AUTH_TOKEN"] = ""
         os.environ["BOOKS_DATA"] = str(self.books_path)
         os.environ["LLM_CACHE_DATA"] = str(self.llm_path)
         os.environ["BOOKSHELF_CORS_ORIGINS"] = "https://book.tanxy.net"

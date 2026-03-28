@@ -30,26 +30,26 @@ def verify_auth(request: Request, conn: sqlite3.Connection | None = None) -> Non
 
     token_hash = _hash_token(token)
 
-    # SQLite path — check auth_tokens table
+    # SQLite path — check auth_tokens table, then fall back to env var
     if conn is not None:
         row = conn.execute(
             "SELECT token_hash FROM auth_tokens WHERE token_hash = ?",
             (token_hash,),
         ).fetchone()
-        if row is None:
-            raise HTTPException(status_code=401, detail="Invalid token.")
-        # Update last_used timestamp
-        conn.execute(
-            "UPDATE auth_tokens SET last_used = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') "
-            "WHERE token_hash = ?",
-            (token_hash,),
-        )
-        conn.commit()
-        return
+        if row is not None:
+            conn.execute(
+                "UPDATE auth_tokens SET last_used = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') "
+                "WHERE token_hash = ?",
+                (token_hash,),
+            )
+            conn.commit()
+            return
 
     # Fallback — compare against env var
     env_token = os.getenv("BOOKSHELF_AUTH_TOKEN", "").strip()
     if not env_token:
+        if conn is not None:
+            raise HTTPException(status_code=401, detail="Invalid token.")
         raise HTTPException(status_code=503, detail="Auth token not configured on server.")
     if token_hash != _hash_token(env_token):
         raise HTTPException(status_code=401, detail="Invalid token.")

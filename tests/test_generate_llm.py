@@ -196,7 +196,8 @@ class GenerateLlmTests(unittest.TestCase):
                         str(cache_path),
                     ],
                 ):
-                    exit_code = generate_llm.main()
+                    with patch.dict(os.environ, {"DB_PATH": ""}):
+                        exit_code = generate_llm.main()
 
             self.assertEqual(exit_code, 0)
             saved = load_json(cache_path, default_llm_cache)
