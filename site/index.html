@@ -880,6 +880,120 @@
 
     .hidden { display: none !important; }
 
+    /* ── Auth & admin UI ── */
+    .staging-banner {
+      padding: 8px 16px;
+      text-align: center;
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      color: #5f4329;
+      background: linear-gradient(90deg, #f9e4c6, #fce8d0, #f9e4c6);
+      border-bottom: 1px solid rgba(122, 92, 62, 0.2);
+    }
+
+    .staging-banner .dry-run-tag {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(140, 93, 88, 0.15);
+      color: var(--rose);
+      font-size: .7rem;
+    }
+
+    .auth-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(255, 252, 247, 0.85);
+      border-bottom: 1px solid var(--border);
+      font-size: .8rem;
+    }
+
+    .auth-bar input {
+      flex: 1;
+      max-width: 260px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: .8rem;
+      font-family: inherit;
+      background: #fff;
+    }
+
+    .auth-bar button {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--accent-deep);
+      color: #fff;
+      font-size: .78rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .auth-bar .auth-status {
+      color: var(--muted);
+      font-size: .76rem;
+    }
+
+    .admin-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .admin-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 7px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255, 250, 243, 0.8);
+      color: var(--accent-deep);
+      font-size: .78rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background .14s, border-color .14s, transform .14s;
+    }
+
+    .admin-btn:hover {
+      background: rgba(122, 92, 62, 0.1);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+
+    .book-card .edit-icon {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      z-index: 10;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(122, 92, 62, 0.2);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: .7rem;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .book-card .edit-icon:hover {
+      background: var(--accent-deep);
+      color: #fff;
+      border-color: var(--accent-deep);
+    }
+
+    body.authed .book-card .edit-icon {
+      display: flex;
+    }
+
     @media (max-width: 980px) {
       header .container {
         grid-template-columns: 1fr;
@@ -916,11 +1030,20 @@
   </style>
 </head>
 <body>
+<div class="staging-banner hidden" id="staging-banner"></div>
+
+<div class="auth-bar" id="auth-bar">
+  <span class="auth-status" id="auth-status">Admin</span>
+  <input type="password" id="auth-token-input" placeholder="Bearer token…">
+  <button id="auth-login-btn">Login</button>
+  <button id="auth-logout-btn" class="hidden" style="background:transparent;color:var(--muted)">Logout</button>
+</div>
+
 <header>
   <div class="container">
     <div>
       <p class="site-kicker">Personal Library Archive</p>
-      <h1 class="site-title">Xinyu's Bookshelf</h1>
+      <h1 class="site-title">Xinyu’s Bookshelf</h1>
       <p class="site-subtitle">What I’ve been reading, what’s still open, and the patterns that start to appear when the shelf gets large enough.</p>
     </div>
     <nav>
@@ -966,6 +1089,10 @@
     <div class="section-header">
       <div>
         <h2 class="section-heading">Books Read <span class="section-count" id="read-count"></span></h2>
+      </div>
+      <div class="admin-actions hidden" id="admin-actions">
+        <a class="admin-btn" href="add.html">+ Add Book</a>
+        <button class="admin-btn" id="regenerate-btn">Regenerate LLM</button>
       </div>
     </div>
 
@@ -1107,8 +1234,9 @@ function escHtml(str) {
 function buildCoverHtml(book) {
   const title = escHtml(book.title || 'Untitled');
   const author = escHtml(book.author || 'Unknown author');
+  const hasCover = book.cover_url || book.isbn13;
   const placeholder = `
-    <div class="book-cover-placeholder"${book.isbn13 ? ' style="display:none"' : ''}>
+    <div class="book-cover-placeholder"${hasCover ? ' style="display:none"' : ''}>
       <span class="book-cover-placeholder-label">No cover</span>
       <div class="book-cover-placeholder-copy">
         <div class="book-cover-placeholder-title">${title}</div>
@@ -1116,6 +1244,11 @@ function buildCoverHtml(book) {
       </div>
     </div>`;
 
+  if (book.cover_url) {
+    return `<img class="book-cover" src="${escHtml(book.cover_url)}" alt="${title}" loading="lazy"
+      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      ${placeholder}`;
+  }
   if (book.isbn13) {
     const url = `https://covers.openlibrary.org/b/isbn/${book.isbn13}-M.jpg?default=false`;
     return `<img class="book-cover" src="${url}" alt="${title}" loading="lazy"
@@ -1145,6 +1278,7 @@ function writeHash(params) {
 
 function buildCardDataAttrs(book, context) {
   const attrs = {
+    'data-id': book.id || '',
     'data-title': book.title || '',
     'data-author': book.author || '',
     'data-rating': book.my_rating || '',
@@ -1154,6 +1288,8 @@ function buildCardDataAttrs(book, context) {
     'data-status': context === 'currently-reading' ? 'Reading now' : '',
     'data-shelves': (book.shelves || []).slice(0, 6).join('|'),
     'data-review': (book.my_review || '').trim(),
+    'data-notes': (book.notes || '').trim(),
+    'data-cover-url': book.cover_url || '',
   };
 
   return Object.entries(attrs)
@@ -1165,7 +1301,9 @@ function buildCardDataAttrs(book, context) {
 function buildCard(book, extraClass = '', context = 'read') {
   const attrs = buildCardDataAttrs(book, context);
   const label = `${book.title || 'Untitled'} by ${book.author || 'Unknown author'}`;
+  const editIcon = book.id ? `<a class="edit-icon" href="edit.html?id=${book.id}" title="Edit" onclick="event.stopPropagation()">&#9998;</a>` : '';
   return `<button type="button" class="book-card${extraClass ? ' ' + extraClass : ''}" ${attrs} aria-label="${escHtml(label)}">
+    ${editIcon}
     <div class="book-cover-shell">
       ${buildCoverHtml(book)}
     </div>
@@ -1195,6 +1333,8 @@ function buildHovercardContent(card) {
     : '';
   const review = (card.dataset.review || '').trim();
   const reviewHtml = review ? `<div class="hovercard-review">${escHtml(review.slice(0, 260))}${review.length > 260 ? '…' : ''}</div>` : '';
+  const notes = (card.dataset.notes || '').trim();
+  const notesHtml = notes ? `<div class="hovercard-review" style="border-left:3px solid var(--olive);background:var(--olive-soft)"><strong>Notes:</strong> ${escHtml(notes.slice(0, 260))}${notes.length > 260 ? '…' : ''}</div>` : '';
 
   return `
     <div class="hovercard-title">${escHtml(card.dataset.title || 'Untitled')}</div>
@@ -1202,6 +1342,7 @@ function buildHovercardContent(card) {
     ${rows.length ? `<div class="hovercard-meta">${rows.join('')}</div>` : ''}
     ${shelvesHtml}
     ${reviewHtml}
+    ${notesHtml}
   `;
 }
 
@@ -1538,6 +1679,7 @@ async function load() {
 
   if (healthResult.status === 'fulfilled') {
     healthPayload = healthResult.value;
+    renderStagingBanner(healthPayload);
   }
 
   const data = booksResult.value;
@@ -1558,12 +1700,7 @@ async function load() {
     renderRecommendations(recommendationsResult.value);
   }
 
-  const booksDate = generated_at ? formatLongDate(generated_at) : '';
-  const llmDate = healthPayload && (healthPayload.llm_generated_at || healthPayload.generated_at)
-    ? formatLongDate(healthPayload.llm_generated_at || healthPayload.generated_at)
-    : '';
-  document.getElementById('footer-text').textContent =
-    `Data from Goodreads${booksDate ? ' · Last updated ' + booksDate : ''}${llmDate ? ' · LLM cache ' + llmDate : ''}`;
+  updateFooter(generated_at);
 }
 
 document.getElementById('sort-pills').addEventListener('click', e => {
@@ -1644,6 +1781,85 @@ document.getElementById('recommendations-toggle').addEventListener('click', func
   this.querySelector('.chevron').textContent = isOpen ? '▼' : '▶';
   this.querySelector('span:last-child').textContent = isOpen ? 'Hide recommendations' : 'Show recommendations';
 });
+
+// ── Auth ──
+const AUTH_KEY = 'bookshelf_auth_token';
+
+function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
+
+function setAuthState(loggedIn) {
+  document.body.classList.toggle('authed', loggedIn);
+  document.getElementById('auth-token-input').classList.toggle('hidden', loggedIn);
+  document.getElementById('auth-login-btn').classList.toggle('hidden', loggedIn);
+  document.getElementById('auth-logout-btn').classList.toggle('hidden', !loggedIn);
+  document.getElementById('auth-status').textContent = loggedIn ? 'Logged in' : 'Admin';
+  const adminActions = document.getElementById('admin-actions');
+  if (adminActions) adminActions.classList.toggle('hidden', !loggedIn);
+}
+
+document.getElementById('auth-login-btn').addEventListener('click', () => {
+  const token = document.getElementById('auth-token-input').value.trim();
+  if (!token) return;
+  localStorage.setItem(AUTH_KEY, token);
+  setAuthState(true);
+});
+
+document.getElementById('auth-logout-btn').addEventListener('click', () => {
+  localStorage.removeItem(AUTH_KEY);
+  setAuthState(false);
+});
+
+if (getToken()) setAuthState(true);
+
+// ── Staging banner ──
+function renderStagingBanner(health) {
+  const banner = document.getElementById('staging-banner');
+  if (!health) return;
+  const isStaging = health.environment && health.environment !== 'production';
+  const isDryRun = health.dry_run;
+  if (!isStaging && !isDryRun) return;
+
+  let text = isStaging ? `Staging environment (${escHtml(health.environment)})` : '';
+  if (isDryRun) text += `${text ? ' ' : ''}<span class="dry-run-tag">DRY RUN</span>`;
+  banner.innerHTML = text;
+  banner.classList.remove('hidden');
+}
+
+// ── Regenerate ──
+document.getElementById('regenerate-btn').addEventListener('click', async () => {
+  const token = getToken();
+  if (!token) return alert('Not logged in.');
+  const btn = document.getElementById('regenerate-btn');
+  btn.textContent = 'Regenerating…';
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`${apiBase}/api/llm/regenerate`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: false }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+    btn.textContent = 'Started!';
+    setTimeout(() => { btn.textContent = 'Regenerate LLM'; btn.disabled = false; }, 3000);
+  } catch (err) {
+    alert('Regeneration failed: ' + err.message);
+    btn.textContent = 'Regenerate LLM';
+    btn.disabled = false;
+  }
+});
+
+// ── Update footer ──
+function updateFooter(generated_at) {
+  const booksDate = generated_at ? formatLongDate(generated_at) : '';
+  const llmDate = healthPayload && (healthPayload.llm_generated_at || healthPayload.generated_at)
+    ? formatLongDate(healthPayload.llm_generated_at || healthPayload.generated_at)
+    : '';
+  const backend = healthPayload && healthPayload.data_backend ? healthPayload.data_backend : '';
+  const source = backend === 'sqlite' ? 'SQLite' : 'Data files';
+  document.getElementById('footer-text').textContent =
+    `${source}${booksDate ? ' · Last updated ' + booksDate : ''}${llmDate ? ' · LLM cache ' + llmDate : ''}`;
+}
 
 load();
 </script>

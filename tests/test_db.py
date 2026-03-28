@@ -402,9 +402,10 @@ class BookshelfDBTests(unittest.TestCase):
         # Should have my_review not review
         self.assertIn("my_review", book)
         self.assertNotIn("review", book)
-        # Should not have DB-only fields
-        self.assertNotIn("id", book)
-        self.assertNotIn("notes", book)
+        # id, notes, cover_url, google_books_id are kept for CRUD/frontend
+        self.assertIn("id", book)
+        self.assertIn("notes", book)
+        # DB-only timestamps are removed
         self.assertNotIn("created_at", book)
         self.assertNotIn("updated_at", book)
         # Empty strings not None
