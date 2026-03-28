@@ -66,6 +66,7 @@ class GenerateLlmTests(unittest.TestCase):
         books_hash = compute_books_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
+        cache_payload["prompt_hash"] = generate_llm.compute_prompt_hash()
         cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
         cache_payload["recommendations"]["gpt45"]["model"] = generate_llm.OPENAI_MODEL
         self.assertTrue(generate_llm.skip_generation(cache_payload, books_hash, force=False))
@@ -76,8 +77,20 @@ class GenerateLlmTests(unittest.TestCase):
         books_hash = compute_books_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
+        cache_payload["prompt_hash"] = generate_llm.compute_prompt_hash()
         cache_payload["recommendations"]["opus"]["model"] = "old-anthropic-model"
         cache_payload["recommendations"]["gpt45"]["model"] = "old-openai-model"
+
+        self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=False))
+
+    def test_skip_generation_rebuilds_when_prompt_changes(self):
+        books_payload = sample_books_payload()
+        books_hash = compute_books_hash(books_payload)
+        cache_payload = default_llm_cache()
+        cache_payload["books_hash"] = books_hash
+        cache_payload["prompt_hash"] = "old-prompt-hash"
+        cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
+        cache_payload["recommendations"]["gpt45"]["model"] = generate_llm.OPENAI_MODEL
 
         self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=False))
 

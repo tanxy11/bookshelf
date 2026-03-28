@@ -71,6 +71,7 @@ def default_llm_cache() -> dict[str, Any]:
         "books_hash": "",
         "generated_at": None,
         "dry_run": False,
+        "prompt_hash": "",
         "taste_profile": {},
         "recommendations": {
             "opus": {"model": None},
@@ -337,6 +338,7 @@ class BookshelfDB:
             "books_hash": metadata.get("books_hash", ""),
             "generated_at": metadata.get("generated_at"),
             "dry_run": metadata.get("dry_run", False),
+            "prompt_hash": metadata.get("prompt_hash", ""),
             "taste_profile": taste_profile,
             "recommendations": recommendations,
         }
