@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -20,12 +21,15 @@ from bookshelf_data import (
     default_llm_cache,
 )
 from db import (
+    delete_book,
+    get_book_by_id,
     get_connection,
     get_llm_cache_value,
     get_schema_version,
     insert_book,
     run_migrations,
     set_llm_cache_value,
+    update_book,
 )
 
 try:
@@ -159,8 +163,14 @@ SAMPLE_LLM_CACHE = {
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+TEST_AUTH_TOKEN = "test-secret-token"
+TEST_AUTH_HEADER = {"Authorization": f"Bearer {TEST_AUTH_TOKEN}"}
+
+
 def _make_test_db(tmp_dir: str) -> Path:
     """Create a SQLite DB with sample data and return its path."""
+    import hashlib
+
     db_path = Path(tmp_dir) / "test.db"
     conn = get_connection(db_path)
     run_migrations(conn)
@@ -190,6 +200,13 @@ def _make_test_db(tmp_dir: str) -> Path:
     })
     set_llm_cache_value(conn, "taste_profile", SAMPLE_LLM_CACHE["taste_profile"])
     set_llm_cache_value(conn, "recommendations", SAMPLE_LLM_CACHE["recommendations"])
+
+    # Insert auth token
+    token_hash = hashlib.sha256(TEST_AUTH_TOKEN.encode()).hexdigest()
+    conn.execute(
+        "INSERT INTO auth_tokens (token_hash, label) VALUES (?, ?)",
+        (token_hash, "test"),
+    )
 
     conn.commit()
     conn.close()
@@ -290,6 +307,59 @@ class DbSchemaTests(unittest.TestCase):
         conn = get_connection(self.db_path)
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
         self.assertEqual(mode, "wal")
+        conn.close()
+
+    def test_get_book_by_id(self):
+        conn = get_connection(self.db_path)
+        run_migrations(conn)
+        book_id = insert_book(conn, {
+            "title": "Test", "author": "Author",
+            "date_added": "2026-01-01", "exclusive_shelf": "read",
+        })
+        conn.commit()
+        book = get_book_by_id(conn, book_id)
+        self.assertEqual(book["title"], "Test")
+        self.assertIsNone(get_book_by_id(conn, 9999))
+        conn.close()
+
+    def test_update_book(self):
+        conn = get_connection(self.db_path)
+        run_migrations(conn)
+        book_id = insert_book(conn, {
+            "title": "Old", "author": "Author",
+            "date_added": "2026-01-01", "exclusive_shelf": "read",
+        })
+        conn.commit()
+        self.assertTrue(update_book(conn, book_id, {"title": "New"}))
+        book = get_book_by_id(conn, book_id)
+        self.assertEqual(book["title"], "New")
+        self.assertFalse(update_book(conn, 9999, {"title": "X"}))
+        conn.close()
+
+    def test_update_book_maps_my_review(self):
+        conn = get_connection(self.db_path)
+        run_migrations(conn)
+        book_id = insert_book(conn, {
+            "title": "T", "author": "A",
+            "date_added": "2026-01-01", "exclusive_shelf": "read",
+        })
+        conn.commit()
+        update_book(conn, book_id, {"my_review": "Great!"})
+        book = get_book_by_id(conn, book_id)
+        self.assertEqual(book["my_review"], "Great!")
+        conn.close()
+
+    def test_delete_book(self):
+        conn = get_connection(self.db_path)
+        run_migrations(conn)
+        book_id = insert_book(conn, {
+            "title": "Gone", "author": "Author",
+            "date_added": "2026-01-01", "exclusive_shelf": "read",
+        })
+        conn.commit()
+        self.assertTrue(delete_book(conn, book_id))
+        self.assertFalse(delete_book(conn, book_id))
+        self.assertIsNone(get_book_by_id(conn, book_id))
         conn.close()
 
 
@@ -502,9 +572,8 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(resp.json()["status"], "idle")
 
     def test_llm_regenerate_requires_auth(self):
-        # Without auth token configured, returns 503
         resp = self.client.post("/api/llm/regenerate")
-        self.assertEqual(resp.status_code, 503)
+        self.assertEqual(resp.status_code, 401)
 
     def test_llm_regenerate_rejects_bad_token(self):
         os.environ["BOOKSHELF_AUTH_TOKEN"] = "correct-token"
@@ -514,6 +583,107 @@ class ApiSqliteTests(unittest.TestCase):
         resp = client.post(
             "/api/llm/regenerate",
             headers={"Authorization": "Bearer wrong-token"},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_create_book(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "New Book", "author": "New Author", "exclusive_shelf": "to_read"},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertEqual(data["title"], "New Book")
+        self.assertEqual(data["author"], "New Author")
+
+    def test_create_book_requires_auth(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "X", "author": "Y"},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_create_book_requires_title_and_author(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Only Title"},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_update_book(self):
+        # Create a book first
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Old Title", "author": "Author", "exclusive_shelf": "to_read"},
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = resp.json()["id"]
+
+        resp = self.client.put(
+            f"/api/books/{book_id}",
+            json={"title": "New Title"},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["title"], "New Title")
+
+    def test_update_book_not_found(self):
+        resp = self.client.put(
+            "/api/books/99999",
+            json={"title": "X"},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_delete_book(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "To Delete", "author": "Author"},
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = resp.json()["id"]
+
+        resp = self.client.delete(
+            f"/api/books/{book_id}",
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["deleted"])
+
+    def test_delete_book_not_found(self):
+        resp = self.client.delete(
+            "/api/books/99999",
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_lookup_endpoint(self):
+        mock_results = [{"title": "Dune", "author": "Frank Herbert", "google_books_id": "abc"}]
+        with patch("api.google_books.search_books", new_callable=AsyncMock, return_value=mock_results):
+            resp = self.client.get("/api/lookup?q=dune")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["results"][0]["title"], "Dune")
+
+    def test_lookup_requires_query(self):
+        resp = self.client.get("/api/lookup?q=")
+        self.assertEqual(resp.status_code, 422)
+
+    def test_auth_with_db_token(self):
+        """Auth works via auth_tokens table without BOOKSHELF_AUTH_TOKEN env var."""
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Auth Test", "author": "Author"},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+    def test_auth_rejects_invalid_db_token(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Auth Test", "author": "Author"},
+            headers={"Authorization": "Bearer bad-token"},
         )
         self.assertEqual(resp.status_code, 401)
 
