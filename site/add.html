@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Book — Xinyu's Bookshelf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f4efe6; --surface: rgba(255,251,245,0.8); --border: rgba(122,92,62,0.16);
+      --border-strong: rgba(122,92,62,0.28); --muted: #7c7267; --text: #261f18;
+      --accent: #7a5c3e; --accent-deep: #5f4329; --accent-soft: #efe1cf;
+      --olive: #5e6954; --olive-soft: #e5ebdd; --radius: 14px;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; min-height: 100vh; }
+    a { color: var(--accent-deep); text-decoration: none; }
+    .container { max-width: 640px; margin: 0 auto; padding: 24px; }
+    h1 { font-family: 'Cormorant Garamond', serif; font-size: 2rem; font-weight: 600; margin-bottom: 8px; }
+    .back { display: inline-block; margin-bottom: 16px; font-size: .85rem; color: var(--muted); }
+    .back:hover { color: var(--accent-deep); }
+
+    .lookup-section { margin-bottom: 24px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .lookup-row { display: flex; gap: 8px; }
+    .lookup-row input { flex: 1; }
+    .lookup-results { margin-top: 12px; display: grid; gap: 8px; }
+    .lookup-item { display: flex; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.7); cursor: pointer; transition: background .12s, border-color .12s; align-items: center; }
+    .lookup-item:hover { background: var(--accent-soft); border-color: var(--border-strong); }
+    .lookup-cover { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+    .lookup-info { flex: 1; }
+    .lookup-title { font-weight: 600; font-size: .88rem; }
+    .lookup-author { color: var(--muted); font-size: .8rem; }
+    .lookup-meta { color: var(--muted); font-size: .72rem; margin-top: 2px; }
+
+    form { display: grid; gap: 16px; }
+    .form-group { display: grid; gap: 4px; }
+    .form-group label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .form-group input, .form-group textarea, .form-group select {
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: rgba(255,255,255,0.8); font-size: .88rem; font-family: inherit; color: var(--text);
+    }
+    .form-group textarea { min-height: 80px; resize: vertical; }
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+      outline: none; border-color: rgba(122,92,62,0.42); box-shadow: 0 0 0 3px rgba(122,92,62,0.08);
+    }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .toggle-expanded { font-size: .8rem; color: var(--accent-deep); cursor: pointer; background: none; border: none; font-family: inherit; text-align: left; padding: 0; }
+    .toggle-expanded:hover { text-decoration: underline; }
+    .expanded-fields { display: none; }
+    .expanded-fields.open { display: grid; gap: 16px; }
+
+    .btn { padding: 12px 24px; border: none; border-radius: 12px; font-family: inherit; font-size: .9rem; font-weight: 600; cursor: pointer; transition: background .14s, transform .14s; }
+    .btn-primary { background: var(--accent-deep); color: #fff; }
+    .btn-primary:hover { background: var(--accent); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .message { padding: 12px; border-radius: 10px; font-size: .85rem; }
+    .message.success { background: var(--olive-soft); color: var(--olive); border: 1px solid rgba(94,105,84,0.2); }
+    .message.error { background: rgba(140,93,88,0.1); color: #8c5d58; border: 1px solid rgba(140,93,88,0.2); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="index.html">&larr; Back to bookshelf</a>
+  <h1>Add a Book</h1>
+
+  <div class="lookup-section">
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:8px">Search Google Books to auto-fill details, or enter manually below.</p>
+    <div class="lookup-row">
+      <input type="text" id="lookup-query" placeholder="Search by title or author…">
+      <button class="btn btn-primary" id="lookup-btn" style="padding:8px 16px;font-size:.82rem">Search</button>
+    </div>
+    <div class="lookup-results" id="lookup-results"></div>
+  </div>
+
+  <form id="add-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="title">Title *</label>
+        <input type="text" id="title" name="title" required>
+      </div>
+      <div class="form-group">
+        <label for="author">Author *</label>
+        <input type="text" id="author" name="author" required>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="exclusive_shelf">Shelf</label>
+        <select id="exclusive_shelf" name="exclusive_shelf">
+          <option value="to_read">Want to Read</option>
+          <option value="currently_reading">Currently Reading</option>
+          <option value="read">Read</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="my_rating">My Rating</label>
+        <select id="my_rating" name="my_rating">
+          <option value="0">No rating</option>
+          <option value="1">1 star</option>
+          <option value="2">2 stars</option>
+          <option value="3">3 stars</option>
+          <option value="4">4 stars</option>
+          <option value="5">5 stars</option>
+        </select>
+      </div>
+    </div>
+
+    <button type="button" class="toggle-expanded" id="toggle-expanded">Show more fields</button>
+
+    <div class="expanded-fields" id="expanded-fields">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="isbn13">ISBN-13</label>
+          <input type="text" id="isbn13" name="isbn13">
+        </div>
+        <div class="form-group">
+          <label for="pages">Pages</label>
+          <input type="number" id="pages" name="pages">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="date_read">Date Read</label>
+          <input type="date" id="date_read" name="date_read">
+        </div>
+        <div class="form-group">
+          <label for="date_added">Date Added</label>
+          <input type="date" id="date_added" name="date_added">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="cover_url">Cover URL</label>
+        <input type="url" id="cover_url" name="cover_url" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label for="my_review">Review</label>
+        <textarea id="my_review" name="my_review" placeholder="Your review…"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" placeholder="Personal notes (highest-signal for LLM taste analysis)…"></textarea>
+      </div>
+      <input type="hidden" id="google_books_id" name="google_books_id">
+    </div>
+
+    <div id="message" class="message hidden"></div>
+    <button type="submit" class="btn btn-primary" id="submit-btn">Add Book</button>
+  </form>
+</div>
+
+<script>
+const AUTH_KEY = 'bookshelf_auth_token';
+const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const localApiPort = location.port === '8010' ? '8011' : '8001';
+const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
+
+function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function showMessage(text, type) {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className = `message ${type}`;
+  el.classList.remove('hidden');
+}
+
+// ── Google Books lookup ──
+document.getElementById('lookup-btn').addEventListener('click', async () => {
+  const q = document.getElementById('lookup-query').value.trim();
+  if (!q) return;
+  const results = document.getElementById('lookup-results');
+  results.innerHTML = '<p style="color:var(--muted);font-size:.82rem">Searching…</p>';
+  try {
+    const resp = await fetch(`${apiBase}/api/lookup?q=${encodeURIComponent(q)}`);
+    const data = await resp.json();
+    if (!data.results || !data.results.length) {
+      results.innerHTML = '<p style="color:var(--muted);font-size:.82rem">No results found.</p>';
+      return;
+    }
+    results.innerHTML = data.results.map((r, i) => `
+      <div class="lookup-item" data-index="${i}">
+        ${r.cover_url ? `<img class="lookup-cover" src="${escHtml(r.cover_url)}" alt="">` : ''}
+        <div class="lookup-info">
+          <div class="lookup-title">${escHtml(r.title)}</div>
+          <div class="lookup-author">${escHtml(r.author)}</div>
+          <div class="lookup-meta">${r.pages ? r.pages + ' pages' : ''}${r.isbn13 ? ' · ' + r.isbn13 : ''}${r.published_date ? ' · ' + r.published_date : ''}</div>
+        </div>
+      </div>
+    `).join('');
+
+    results.querySelectorAll('.lookup-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const r = data.results[parseInt(el.dataset.index)];
+        document.getElementById('title').value = r.title || '';
+        document.getElementById('author').value = r.author || '';
+        document.getElementById('isbn13').value = r.isbn13 || '';
+        document.getElementById('pages').value = r.pages || '';
+        document.getElementById('cover_url').value = r.cover_url || '';
+        document.getElementById('google_books_id').value = r.google_books_id || '';
+        // Show expanded fields since we filled them
+        document.getElementById('expanded-fields').classList.add('open');
+        document.getElementById('toggle-expanded').textContent = 'Hide extra fields';
+        results.innerHTML = `<p style="color:var(--olive);font-size:.82rem">Filled from: ${escHtml(r.title)} by ${escHtml(r.author)}</p>`;
+      });
+    });
+  } catch (err) {
+    results.innerHTML = `<p style="color:#8c5d58;font-size:.82rem">Search failed: ${escHtml(err.message)}</p>`;
+  }
+});
+
+document.getElementById('lookup-query').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('lookup-btn').click(); }
+});
+
+// ── Toggle expanded ──
+document.getElementById('toggle-expanded').addEventListener('click', function() {
+  const fields = document.getElementById('expanded-fields');
+  fields.classList.toggle('open');
+  this.textContent = fields.classList.contains('open') ? 'Hide extra fields' : 'Show more fields';
+});
+
+// ── Submit ──
+document.getElementById('add-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const token = getToken();
+  if (!token) return showMessage('Not logged in. Go back and log in first.', 'error');
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  const body = {
+    title: document.getElementById('title').value.trim(),
+    author: document.getElementById('author').value.trim(),
+    exclusive_shelf: document.getElementById('exclusive_shelf').value,
+    my_rating: parseInt(document.getElementById('my_rating').value) || 0,
+  };
+
+  // Optional expanded fields
+  const isbn13 = document.getElementById('isbn13').value.trim();
+  const pages = document.getElementById('pages').value.trim();
+  const date_read = document.getElementById('date_read').value;
+  const date_added = document.getElementById('date_added').value;
+  const cover_url = document.getElementById('cover_url').value.trim();
+  const my_review = document.getElementById('my_review').value.trim();
+  const notes = document.getElementById('notes').value.trim();
+  const google_books_id = document.getElementById('google_books_id').value.trim();
+
+  if (isbn13) body.isbn13 = isbn13;
+  if (pages) body.pages = parseInt(pages);
+  if (date_read) body.date_read = date_read;
+  if (date_added) body.date_added = date_added;
+  if (cover_url) body.cover_url = cover_url;
+  if (my_review) body.my_review = my_review;
+  if (notes) body.notes = notes;
+  if (google_books_id) body.google_books_id = google_books_id;
+
+  try {
+    const resp = await fetch(`${apiBase}/api/books`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed to add book');
+    showMessage(`Added "${data.title}" by ${data.author}`, 'success');
+    btn.textContent = 'Added!';
+    setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+  } catch (err) {
+    showMessage(err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Add Book';
+  }
+});
+</script>
+</body>
+</html>

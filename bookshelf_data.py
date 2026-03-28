@@ -229,11 +229,7 @@ class BookshelfDB:
     def _row_to_book(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert a DB row to the dict format matching books.json entries."""
         d = dict(row)
-        # Remove DB-only fields not present in the JSON API response
-        d.pop("id", None)
-        d.pop("notes", None)
-        d.pop("cover_url", None)
-        d.pop("google_books_id", None)
+        # Keep id for CRUD links; remove other DB-only fields
         d.pop("created_at", None)
         d.pop("updated_at", None)
 

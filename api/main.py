@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import os
 import sys
 from pathlib import Path
@@ -15,10 +14,10 @@ sys.path.insert(0, str(ROOT_DIR))
 from bookshelf_data import (
     BookshelfDB,
     BookshelfStore,
-    compute_books_hash,
     load_env_file,
     utc_now_iso,
 )
+from api.auth import verify_auth
 
 load_env_file(ROOT_DIR / ".env")
 
@@ -52,29 +51,21 @@ app = FastAPI(title="Bookshelf API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
 
-AUTH_TOKEN = os.getenv("BOOKSHELF_AUTH_TOKEN", "").strip()
+# ── Auth helper ──────────────────────────────────────────────────────────────
 
-# ── LLM regeneration state ───────────────────────────────────────────────────
+def _auth(request: Request) -> None:
+    conn = store.conn() if USE_SQLITE else None
+    verify_auth(request, conn)
+
+
+# ── LLM regeneration state ──────────────────────────────────────────────────
 _llm_lock = asyncio.Lock()
 _llm_status: dict = {"status": "idle"}
-
-
-def _verify_auth(request: Request) -> None:
-    if not AUTH_TOKEN:
-        raise HTTPException(status_code=503, detail="Auth token not configured on server.")
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token.")
-    token = auth[7:]
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    expected_hash = hashlib.sha256(AUTH_TOKEN.encode()).hexdigest()
-    if token_hash != expected_hash:
-        raise HTTPException(status_code=401, detail="Invalid token.")
 
 
 async def _run_llm_regeneration(force: bool = False) -> None:
@@ -105,6 +96,24 @@ async def _run_llm_regeneration(force: bool = False) -> None:
         _llm_status = {"status": "error", "error": str(exc), "failed_at": utc_now_iso()}
 
 
+def _maybe_trigger_llm_regen(shelf: str) -> None:
+    """Fire-and-forget LLM regeneration if a write touched the read shelf."""
+    if shelf != "read" or not USE_SQLITE or _llm_lock.locked():
+        return
+
+    async def _run() -> None:
+        async with _llm_lock:
+            await _run_llm_regeneration()
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_run())
+    except RuntimeError:
+        pass
+
+
+# ── Read endpoints ───────────────────────────────────────────────────────────
+
 @app.get("/api/books")
 async def get_books() -> dict:
     books_payload = store.books()
@@ -132,6 +141,110 @@ async def get_recommendations() -> dict:
     return recommendations
 
 
+# ── CRUD endpoints ───────────────────────────────────────────────────────────
+
+@app.post("/api/books", status_code=201)
+async def create_book(request: Request) -> dict:
+    _auth(request)
+    if not USE_SQLITE:
+        raise HTTPException(status_code=400, detail="CRUD requires SQLite backend.")
+
+    body = await request.json()
+    title = (body.get("title") or "").strip()
+    author = (body.get("author") or "").strip()
+    if not title or not author:
+        raise HTTPException(status_code=422, detail="title and author are required.")
+
+    from db import insert_book
+
+    shelf = body.get("exclusive_shelf", "to_read")
+    book_data = {
+        "title": title,
+        "author": author,
+        "isbn13": body.get("isbn13") or None,
+        "my_rating": int(body.get("my_rating", 0)),
+        "avg_rating": body.get("avg_rating"),
+        "pages": body.get("pages"),
+        "date_read": body.get("date_read") or None,
+        "date_added": body.get("date_added") or utc_now_iso()[:10],
+        "shelves": body.get("shelves", [shelf]),
+        "exclusive_shelf": shelf,
+        "review": body.get("my_review") or body.get("review") or None,
+        "notes": body.get("notes") or None,
+        "cover_url": body.get("cover_url") or None,
+        "google_books_id": body.get("google_books_id") or None,
+        "goodreads_id": body.get("goodreads_id") or None,
+    }
+
+    book_id = insert_book(store.conn(), book_data)
+    store.conn().commit()
+    _maybe_trigger_llm_regen(shelf)
+
+    from db import get_book_by_id
+    return get_book_by_id(store.conn(), book_id)
+
+
+@app.put("/api/books/{book_id}")
+async def update_book_endpoint(book_id: int, request: Request) -> dict:
+    _auth(request)
+    if not USE_SQLITE:
+        raise HTTPException(status_code=400, detail="CRUD requires SQLite backend.")
+
+    from db import get_book_by_id, update_book
+
+    existing = get_book_by_id(store.conn(), book_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Book not found.")
+
+    body = await request.json()
+    if not body:
+        raise HTTPException(status_code=422, detail="No fields to update.")
+
+    if not update_book(store.conn(), book_id, body):
+        raise HTTPException(status_code=404, detail="Book not found.")
+
+    old_shelf = existing.get("exclusive_shelf", "")
+    new_shelf = body.get("exclusive_shelf", old_shelf)
+    if old_shelf == "read" or new_shelf == "read":
+        _maybe_trigger_llm_regen("read")
+
+    return get_book_by_id(store.conn(), book_id)
+
+
+@app.delete("/api/books/{book_id}")
+async def delete_book_endpoint(book_id: int, request: Request) -> dict:
+    _auth(request)
+    if not USE_SQLITE:
+        raise HTTPException(status_code=400, detail="CRUD requires SQLite backend.")
+
+    from db import get_book_by_id, delete_book
+
+    existing = get_book_by_id(store.conn(), book_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Book not found.")
+
+    shelf = existing.get("exclusive_shelf", "")
+    delete_book(store.conn(), book_id)
+    _maybe_trigger_llm_regen(shelf)
+
+    return {"deleted": True, "id": book_id}
+
+
+# ── Lookup endpoint ──────────────────────────────────────────────────────────
+
+@app.get("/api/lookup")
+async def lookup_books(q: str = "") -> dict:
+    q = q.strip()
+    if not q:
+        raise HTTPException(status_code=422, detail="Query parameter 'q' is required.")
+
+    from api.google_books import search_books
+    results = await search_books(q)
+    return {"results": results}
+
+
+# ── Deprecated endpoint ──────────────────────────────────────────────────────
+
 @app.post("/api/sync")
 async def sync() -> dict:
     raise HTTPException(
@@ -140,6 +253,8 @@ async def sync() -> dict:
     )
 
 
+# ── LLM endpoints ───────────────────────────────────────────────────────────
+
 @app.get("/api/llm-status")
 async def llm_status() -> dict:
     return _llm_status
@@ -147,7 +262,7 @@ async def llm_status() -> dict:
 
 @app.post("/api/llm/regenerate")
 async def llm_regenerate(request: Request) -> dict:
-    _verify_auth(request)
+    _auth(request)
     if not USE_SQLITE:
         raise HTTPException(status_code=400, detail="LLM regeneration requires SQLite backend.")
     if _llm_lock.locked():
@@ -167,6 +282,8 @@ async def llm_regenerate(request: Request) -> dict:
     asyncio.create_task(_run())
     return {"status": "started"}
 
+
+# ── Health endpoint ──────────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health() -> dict:

@@ -122,6 +122,23 @@ class ApiTests(unittest.TestCase):
         # Without BOOKSHELF_AUTH_TOKEN set, returns 503
         self.assertIn(response.status_code, [400, 503])
 
+    def test_crud_requires_sqlite(self):
+        """CRUD endpoints return 400 or 401 on JSON backend."""
+        os.environ["BOOKSHELF_AUTH_TOKEN"] = "test-token"
+        if "api.main" in sys.modules:
+            importlib.reload(sys.modules["api.main"])
+        client = TestClient(sys.modules["api.main"].app)
+        headers = {"Authorization": "Bearer test-token"}
+
+        resp = client.post("/api/books", json={"title": "X", "author": "Y"}, headers=headers)
+        self.assertEqual(resp.status_code, 400)
+
+        resp = client.put("/api/books/1", json={"title": "X"}, headers=headers)
+        self.assertEqual(resp.status_code, 400)
+
+        resp = client.delete("/api/books/1", headers=headers)
+        self.assertEqual(resp.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

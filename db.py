@@ -192,3 +192,58 @@ def get_books_by_shelf(conn: sqlite3.Connection, shelf: str) -> list[dict[str, A
         (shelf,),
     ).fetchall()
     return [_row_to_book_dict(row) for row in rows]
+
+
+def get_book_by_id(conn: sqlite3.Connection, book_id: int) -> dict[str, Any] | None:
+    row = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
+    if row is None:
+        return None
+    return _row_to_book_dict(row)
+
+
+def update_book(conn: sqlite3.Connection, book_id: int, fields: dict[str, Any]) -> bool:
+    """Update specific fields on a book. Returns True if the row was found."""
+    existing = conn.execute("SELECT id FROM books WHERE id = ?", (book_id,)).fetchone()
+    if existing is None:
+        return False
+
+    # Map API field names to DB column names
+    if "my_review" in fields and "review" not in fields:
+        fields["review"] = fields.pop("my_review")
+
+    if "shelves" in fields:
+        fields["shelves"] = json.dumps(fields["shelves"], ensure_ascii=False)
+
+    allowed = {
+        "title", "author", "isbn13", "my_rating", "avg_rating", "pages",
+        "date_read", "date_added", "shelves", "exclusive_shelf", "review",
+        "notes", "cover_url", "google_books_id", "goodreads_id",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return True
+
+    updates["updated_at"] = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+    set_parts = []
+    values: list[Any] = []
+    for col, val in updates.items():
+        if col == "updated_at":
+            set_parts.append(f"{col} = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+        else:
+            set_parts.append(f"{col} = ?")
+            values.append(val)
+
+    values.append(book_id)
+    conn.execute(
+        f"UPDATE books SET {', '.join(set_parts)} WHERE id = ?",
+        values,
+    )
+    conn.commit()
+    return True
+
+
+def delete_book(conn: sqlite3.Connection, book_id: int) -> bool:
+    """Delete a book by ID. Returns True if the row existed."""
+    cursor = conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+    conn.commit()
+    return cursor.rowcount > 0
