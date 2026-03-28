@@ -13,23 +13,14 @@ sys.path.insert(0, str(ROOT_DIR))
 from bookshelf_data import (
     BookshelfDB,
     BookshelfStore,
-    default_books_payload,
-    default_llm_cache,
     load_env_file,
-    load_json,
-    save_json,
-    successful_recommendations,
-    successful_taste_profile,
 )
-from api.sync import sync_from_rss
-from scripts.generate_llm import generate_cache_payload
 
 load_env_file(ROOT_DIR / ".env")
 
 DB_PATH = os.getenv("DB_PATH", "").strip()
 BOOKS_DATA_FILE = Path(os.getenv("BOOKS_DATA", "data/books.json"))
 LLM_CACHE_FILE = Path(os.getenv("LLM_CACHE_DATA", "data/llm_cache.json"))
-GOODREADS_USER_ID = os.getenv("GOODREADS_USER_ID", "")
 ENVIRONMENT = (os.getenv("ENVIRONMENT", "production") or "production").strip()
 configured_origins = [
     origin.strip()
@@ -62,21 +53,8 @@ app.add_middleware(
 )
 
 
-async def refresh_llm_cache(books_path: Path, llm_cache_path: Path) -> dict:
-    books_payload = load_json(books_path, default_books_payload)
-    cache_payload = load_json(llm_cache_path, default_llm_cache)
-
-    generated_payload, skipped = await generate_cache_payload(books_payload, cache_payload)
-    if not skipped:
-        save_json(llm_cache_path, generated_payload)
-
-    return {
-        "status": "skipped" if skipped else "ok",
-        "generated_at": generated_payload.get("generated_at"),
-        "books_hash": generated_payload.get("books_hash"),
-        "has_taste_profile": successful_taste_profile(generated_payload) is not None,
-        "has_recommendations": successful_recommendations(generated_payload) is not None,
-    }
+# TODO: Add LLM cache regeneration when books are added/edited via CRUD endpoints (Phase 5).
+# This should be async (BackgroundTasks) and write results to the llm_cache table in SQLite.
 
 
 @app.get("/api/books")
@@ -108,14 +86,10 @@ async def get_recommendations() -> dict:
 
 @app.post("/api/sync")
 async def sync() -> dict:
-    if not GOODREADS_USER_ID:
-        raise HTTPException(status_code=500, detail="GOODREADS_USER_ID not set.")
-    result = await sync_from_rss(GOODREADS_USER_ID, BOOKS_DATA_FILE)
-    try:
-        result["llm"] = await refresh_llm_cache(BOOKS_DATA_FILE, LLM_CACHE_FILE)
-    except Exception as exc:  # noqa: BLE001 - keep RSS sync successful even if LLM refresh fails
-        result["llm"] = {"status": "error", "error": str(exc)}
-    return result
+    raise HTTPException(
+        status_code=410,
+        detail="Goodreads RSS sync is deprecated. Books are now managed directly via the database.",
+    )
 
 
 @app.get("/api/health")
