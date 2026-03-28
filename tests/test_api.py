@@ -109,6 +109,19 @@ class ApiTests(unittest.TestCase):
         response = self.client.post("/api/sync")
         self.assertEqual(response.status_code, 410)
 
+    def test_llm_status_endpoint(self):
+        response = self.client.get("/api/llm-status")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "idle")
+
+    def test_llm_regenerate_requires_sqlite(self):
+        response = self.client.post(
+            "/api/llm/regenerate",
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Without BOOKSHELF_AUTH_TOKEN set, returns 503
+        self.assertIn(response.status_code, [400, 503])
+
 
 if __name__ == "__main__":
     unittest.main()

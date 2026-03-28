@@ -82,7 +82,7 @@ deploy-sync:
 	rsync -avz data/books.json data/llm_cache.json $(VPS_HOST):$(VPS_PATH)/data/
 	rsync -avz api/ $(VPS_HOST):$(VPS_PATH)/api/
 	rsync -avz scripts/ $(VPS_HOST):$(VPS_PATH)/scripts/
-	rsync -avz bookshelf_data.py $(VPS_HOST):$(VPS_PATH)/
+	rsync -avz bookshelf_data.py db.py $(VPS_HOST):$(VPS_PATH)/
 	rsync -avz deploy/nginx.conf deploy/bookshelf.service $(VPS_HOST):$(VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(VPS_HOST):$(VPS_PATH)/
 
@@ -103,7 +103,7 @@ deploy-staging-sync:
 	rsync -avz $(STAGING_LLM_CACHE) $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/data/llm_cache.json
 	rsync -avz api/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/api/
 	rsync -avz scripts/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/scripts/
-	rsync -avz bookshelf_data.py $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/
+	rsync -avz bookshelf_data.py db.py $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/
 	rsync -avz deploy/nginx.staging.conf deploy/nginx.staging.bootstrap.conf deploy/bookshelf-staging.service deploy/staging.env.example $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/
 

@@ -191,6 +191,95 @@ class GenerateLlmTests(unittest.TestCase):
             self.assertEqual(saved["recommendations"]["gpt45"]["model"], "gpt-test")
 
 
+    def test_build_library_snapshot_includes_notes(self):
+        books_payload = sample_books_payload()
+        books_payload["books"]["read"][0]["notes"] = "Changed how I think about ecology."
+        snapshot = generate_llm.build_library_snapshot(books_payload)
+        self.assertEqual(snapshot["read"][0]["notes"], "Changed how I think about ecology.")
+        # Book without notes should not have the key
+        self.assertNotIn("notes", snapshot["read"][1])
+
+    def test_build_library_snapshot_excludes_empty_notes(self):
+        books_payload = sample_books_payload()
+        books_payload["books"]["read"][0]["notes"] = ""
+        snapshot = generate_llm.build_library_snapshot(books_payload)
+        self.assertNotIn("notes", snapshot["read"][0])
+
+    def test_taste_profile_prompt_mentions_notes(self):
+        snapshot = generate_llm.build_library_snapshot(sample_books_payload())
+        prompt = generate_llm.build_taste_profile_prompt(snapshot)
+        self.assertIn("notes", prompt)
+        self.assertIn("highest-signal", prompt)
+
+    def test_recommendations_prompt_mentions_notes(self):
+        snapshot = generate_llm.build_library_snapshot(sample_books_payload())
+        prompt = generate_llm.build_recommendations_prompt(snapshot)
+        self.assertIn("notes", prompt)
+        self.assertIn("type of thinking", prompt)
+
+    def test_main_sqlite_mode(self):
+        """Test that --db flag routes to SQLite generation."""
+        books_payload = sample_books_payload()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test SQLite DB
+            from db import get_connection, run_migrations, insert_book, set_llm_cache_value
+
+            db_path = Path(tmpdir) / "test.db"
+            conn = get_connection(db_path)
+            run_migrations(conn)
+            for book in books_payload["books"]["read"]:
+                insert_book(conn, {
+                    "title": book["title"],
+                    "author": book["author"],
+                    "my_rating": book.get("my_rating", 0),
+                    "date_read": book.get("date_read") or None,
+                    "date_added": "2026-01-01",
+                    "shelves": book.get("shelves", []),
+                    "exclusive_shelf": "read",
+                    "review": book.get("my_review"),
+                })
+            conn.commit()
+
+            fake_payload = default_llm_cache()
+            fake_payload["books_hash"] = "xyz789"
+            fake_payload["generated_at"] = "2026-03-22T14:00:00Z"
+            fake_payload["taste_profile"] = {
+                "summary": "DB Summary",
+                "traits": [{"label": "Trait", "explanation": "Explanation"}],
+                "blind_spots": "Blind spots",
+            }
+            fake_payload["recommendations"]["gpt45"] = {
+                "model": "gpt-test",
+                "books": [{"title": "Rec", "author": "Author", "reason": "Specific.", "confidence": "high"}],
+                "reasoning": "Reasoning",
+            }
+
+            with patch.object(
+                generate_llm,
+                "generate_cache_payload",
+                AsyncMock(return_value=(fake_payload, False)),
+            ):
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["generate_llm.py", "--db", str(db_path)],
+                ):
+                    exit_code = generate_llm.main()
+
+            self.assertEqual(exit_code, 0)
+
+            # Verify results were written to the DB
+            from db import get_llm_cache_value
+            conn2 = get_connection(db_path)
+            metadata = get_llm_cache_value(conn2, "metadata")
+            self.assertEqual(metadata["books_hash"], "xyz789")
+            tp = get_llm_cache_value(conn2, "taste_profile")
+            self.assertEqual(tp["summary"], "DB Summary")
+            conn2.close()
+            conn.close()
+
+
 def json_dump(payload: dict) -> str:
     import json
 

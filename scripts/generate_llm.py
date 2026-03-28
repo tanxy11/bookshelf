@@ -86,19 +86,24 @@ def build_mock_recommendations(model_name: str, prefix: str) -> dict[str, Any]:
 
 def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
     books = books_payload.get("books", {})
+
+    def _read_entry(book: dict[str, Any]) -> dict[str, Any]:
+        entry = {
+            "title": book.get("title"),
+            "author": book.get("author"),
+            "my_rating": book.get("my_rating"),
+            "my_review": book.get("my_review"),
+            "shelves": book.get("shelves", []),
+            "date_read": book.get("date_read"),
+        }
+        notes = book.get("notes")
+        if notes:
+            entry["notes"] = notes
+        return entry
+
     return {
         "stats": books_payload.get("stats", {}),
-        "read": [
-            {
-                "title": book.get("title"),
-                "author": book.get("author"),
-                "my_rating": book.get("my_rating"),
-                "my_review": book.get("my_review"),
-                "shelves": book.get("shelves", []),
-                "date_read": book.get("date_read"),
-            }
-            for book in books.get("read", [])
-        ],
+        "read": [_read_entry(book) for book in books.get("read", [])],
         "currently_reading": [
             {
                 "title": book.get("title"),
@@ -130,6 +135,9 @@ def build_taste_profile_prompt(snapshot: dict[str, Any]) -> str:
         "Rules:\n"
         "- Base every claim on patterns actually visible in the data.\n"
         "- Use ratings, shelves, and review text when available.\n"
+        "- Pay special attention to the 'notes' field — these contain the reader's own reflections "
+        "and are the highest-signal data about their taste. Weight notes more heavily than ratings "
+        "when they conflict.\n"
         "- Avoid generic genre summaries and empty flattery.\n"
         "- Traits should describe reading personality, not genres.\n"
         "- If the data is thin or ambiguous, say that honestly.\n"
@@ -159,6 +167,9 @@ def build_recommendations_prompt(snapshot: dict[str, Any]) -> str:
         "- Do not recommend any book already present in read or currently_reading.\n"
         "- You MAY recommend books from the to_read shelf — if you do, set from_to_read to true and explain why that book is particularly well-suited given the reading history.\n"
         "- Use the reader's reviews (my_review field) as the primary evidence for their preferences — reviews reveal what they actually valued or disliked, not just what they finished.\n"
+        "- The reader's personal notes (notes field) reveal what specifically resonates with them beyond genre or topic. "
+        "Use notes to identify the *type of thinking* they value, not just the subjects. "
+        "Reference specific notes when explaining why a recommendation fits.\n"
         "- Treat high ratings without a review as weaker signal than a detailed review at any rating.\n"
         "- Explain each recommendation by referencing specific books, reviews, or patterns from the library.\n"
         '- Do not use generic phrases like "if you liked this genre".\n'
@@ -478,19 +489,76 @@ async def generate_cache_payload(
     return result, False
 
 
+def _save_llm_cache_to_db(conn: Any, payload: dict[str, Any]) -> None:
+    """Write LLM cache payload to SQLite llm_cache table as separate keys."""
+    from db import set_llm_cache_value
+
+    set_llm_cache_value(conn, "metadata", {
+        "books_hash": payload.get("books_hash", ""),
+        "generated_at": payload.get("generated_at"),
+        "dry_run": payload.get("dry_run", False),
+    })
+    set_llm_cache_value(conn, "taste_profile", payload.get("taste_profile", {}))
+    set_llm_cache_value(conn, "recommendations", payload.get("recommendations", {}))
+
+
+def _print_result(label: str, payload: dict[str, Any]) -> None:
+    taste_ok = successful_taste_profile(payload) is not None
+    recommendations_ok = successful_recommendations(payload) is not None
+
+    print(f"Wrote {label}")
+    print(f"  books_hash: {payload.get('books_hash')}")
+    print(f"  dry_run: {'true' if payload.get('dry_run') else 'false'}")
+    print(f"  taste_profile: {'ok' if taste_ok else 'error'}")
+    print(
+        "  recommendations: "
+        f"opus={'ok' if payload['recommendations']['opus'].get('books') else 'error'}, "
+        f"gpt45={'ok' if payload['recommendations']['gpt45'].get('books') else 'error'}"
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate cached LLM content.")
     parser.add_argument("--books", default="data/books.json", help="Path to books.json")
     parser.add_argument("--cache", default="data/llm_cache.json", help="Path to llm_cache.json")
+    parser.add_argument("--db", default=None, help="Path to SQLite database (overrides --books/--cache)")
     parser.add_argument("--force", action="store_true", help="Always regenerate, ignoring books_hash")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    books_path = Path(args.books)
-    cache_path = Path(args.cache)
 
+    db_path = args.db or os.getenv("DB_PATH", "").strip()
+    if db_path and Path(db_path).exists():
+        return _main_sqlite(Path(db_path), force=args.force)
+    return _main_json(Path(args.books), Path(args.cache), force=args.force)
+
+
+def _main_sqlite(db_path: Path, force: bool) -> int:
+    from bookshelf_data import BookshelfDB
+
+    store = BookshelfDB(db_path)
+    books_payload = store.books()
+    cache_payload = store.llm_cache()
+
+    generated_payload, skipped = asyncio.run(
+        generate_cache_payload(books_payload, cache_payload, force=force)
+    )
+
+    if skipped:
+        print(f"LLM cache is up to date for hash {generated_payload.get('books_hash')}. Skipping.")
+        return 0
+
+    _save_llm_cache_to_db(store.conn(), generated_payload)
+    _print_result(f"llm_cache → {db_path}", generated_payload)
+
+    taste_ok = successful_taste_profile(generated_payload) is not None
+    recommendations_ok = successful_recommendations(generated_payload) is not None
+    return 0 if taste_ok or recommendations_ok else 1
+
+
+def _main_json(books_path: Path, cache_path: Path, force: bool) -> int:
     if not books_path.exists():
         print(f"Error: books data not found: {books_path}", file=sys.stderr)
         return 1
@@ -499,7 +567,7 @@ def main() -> int:
     cache_payload = load_json(cache_path, default_llm_cache)
 
     generated_payload, skipped = asyncio.run(
-        generate_cache_payload(books_payload, cache_payload, force=args.force)
+        generate_cache_payload(books_payload, cache_payload, force=force)
     )
 
     if skipped:
@@ -507,24 +575,11 @@ def main() -> int:
         return 0
 
     save_json(cache_path, generated_payload)
+    _print_result(str(cache_path), generated_payload)
 
     taste_ok = successful_taste_profile(generated_payload) is not None
     recommendations_ok = successful_recommendations(generated_payload) is not None
-
-    print(f"Wrote {cache_path}")
-    print(f"  books_hash: {generated_payload.get('books_hash')}")
-    print(f"  dry_run: {'true' if generated_payload.get('dry_run') else 'false'}")
-    print(f"  taste_profile: {'ok' if taste_ok else 'error'}")
-    print(
-        "  recommendations: "
-        f"opus={'ok' if generated_payload['recommendations']['opus'].get('books') else 'error'}, "
-        f"gpt45={'ok' if generated_payload['recommendations']['gpt45'].get('books') else 'error'}"
-    )
-
-    if taste_ok or recommendations_ok:
-        return 0
-
-    return 1
+    return 0 if taste_ok or recommendations_ok else 1
 
 
 if __name__ == "__main__":

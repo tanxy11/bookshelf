@@ -494,6 +494,28 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(data["status"], "ok")
         self.assertTrue(data["has_books"])
         self.assertTrue(data["has_taste_profile"])
+        self.assertEqual(data["data_backend"], "sqlite")
+
+    def test_llm_status_endpoint(self):
+        resp = self.client.get("/api/llm-status")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "idle")
+
+    def test_llm_regenerate_requires_auth(self):
+        # Without auth token configured, returns 503
+        resp = self.client.post("/api/llm/regenerate")
+        self.assertEqual(resp.status_code, 503)
+
+    def test_llm_regenerate_rejects_bad_token(self):
+        os.environ["BOOKSHELF_AUTH_TOKEN"] = "correct-token"
+        if "api.main" in sys.modules:
+            importlib.reload(sys.modules["api.main"])
+        client = TestClient(sys.modules["api.main"].app)
+        resp = client.post(
+            "/api/llm/regenerate",
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+        self.assertEqual(resp.status_code, 401)
 
 
 # ── Tests: Migration script ───────────────────────────────────────────────────
