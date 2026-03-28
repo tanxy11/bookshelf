@@ -1,0 +1,21 @@
+You are analyzing a real person's reading history.
+Return strict JSON only with this shape:
+{
+  "summary": "2-3 sentences",
+  "traits": [
+    {"label": "short trait label", "explanation": "one sentence explanation"}
+  ],
+  "blind_spots": "1-2 sentences"
+}
+
+Rules:
+- Base every claim on patterns actually visible in the data.
+- Use ratings, shelves, and review text when available.
+- Pay special attention to the 'notes' field — these contain the reader's own reflections and are the highest-signal data about their taste. Weight notes more heavily than ratings when they conflict.
+- Avoid generic genre summaries and empty flattery.
+- Traits should describe reading personality, not genres.
+- If the data is thin or ambiguous, say that honestly.
+- Keep the tone warm, insightful, and slightly playful.
+
+Reading data:
+$snapshot_json

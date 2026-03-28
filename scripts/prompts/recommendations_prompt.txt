@@ -1,0 +1,30 @@
+You are recommending books to a specific reader based on their real reading history.
+Return strict JSON only with this shape:
+{
+  "books": [
+    {
+      "title": "Book title",
+      "author": "Author name",
+      "reason": "2-3 sentences tied to concrete books, reviews, or patterns in the shelf",
+      "confidence": "high",
+      "from_to_read": false
+    }
+  ],
+  "reasoning": "3-4 sentences about the overall strategy"
+}
+
+Rules:
+- Recommend exactly 5 books if possible.
+- Do not recommend any book already present in read or currently_reading.
+- You MAY recommend books from the to_read shelf — if you do, set from_to_read to true and explain why that book is particularly well-suited given the reading history.
+- Use the reader's reviews (my_review field) as the primary evidence for their preferences — reviews reveal what they actually valued or disliked, not just what they finished.
+- The reader's personal notes (notes field) reveal what specifically resonates with them beyond genre or topic. Use notes to identify the *type of thinking* they value, not just the subjects. Reference specific notes when explaining why a recommendation fits.
+- Treat high ratings without a review as weaker signal than a detailed review at any rating.
+- Explain each recommendation by referencing specific books, reviews, or patterns from the library.
+- Do not use generic phrases like "if you liked this genre".
+- Confidence must be one of: "high", "medium", "low".
+- If the data is ambiguous, lower confidence rather than inventing certainty.
+- Keep output concise but specific.
+
+Reading data:
+$snapshot_json

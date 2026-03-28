@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
+from string import Template
 from typing import Any
 
 import httpx
@@ -43,6 +46,9 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-20250514")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
 REQUEST_TIMEOUT_SECONDS = 120
 ROOT_DIR = Path(__file__).resolve().parents[1]
+PROMPTS_DIR = ROOT_DIR / "scripts" / "prompts"
+TASTE_PROFILE_PROMPT_FILE = "taste_profile_prompt.txt"
+RECOMMENDATIONS_PROMPT_FILE = "recommendations_prompt.txt"
 
 load_env_file(ROOT_DIR / ".env")
 
@@ -121,62 +127,37 @@ def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@lru_cache
+def load_prompt_template(template_name: str) -> Template:
+    template_path = PROMPTS_DIR / template_name
+    return Template(template_path.read_text(encoding="utf-8").strip())
+
+
+def render_prompt_template(template_name: str, **context: str) -> str:
+    return load_prompt_template(template_name).substitute(**context)
+
+
+def compute_prompt_hash() -> str:
+    digest = hashlib.sha256()
+    for template_name in (TASTE_PROFILE_PROMPT_FILE, RECOMMENDATIONS_PROMPT_FILE):
+        digest.update(template_name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(load_prompt_template(template_name).template.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def build_taste_profile_prompt(snapshot: dict[str, Any]) -> str:
-    return (
-        "You are analyzing a real person's reading history.\n"
-        "Return strict JSON only with this shape:\n"
-        '{\n'
-        '  "summary": "2-3 sentences",\n'
-        '  "traits": [\n'
-        '    {"label": "short trait label", "explanation": "one sentence explanation"}\n'
-        "  ],\n"
-        '  "blind_spots": "1-2 sentences"\n'
-        "}\n\n"
-        "Rules:\n"
-        "- Base every claim on patterns actually visible in the data.\n"
-        "- Use ratings, shelves, and review text when available.\n"
-        "- Pay special attention to the 'notes' field — these contain the reader's own reflections "
-        "and are the highest-signal data about their taste. Weight notes more heavily than ratings "
-        "when they conflict.\n"
-        "- Avoid generic genre summaries and empty flattery.\n"
-        "- Traits should describe reading personality, not genres.\n"
-        "- If the data is thin or ambiguous, say that honestly.\n"
-        "- Keep the tone warm, insightful, and slightly playful.\n\n"
-        f"Reading data:\n{json.dumps(snapshot, ensure_ascii=False, indent=2)}"
+    return render_prompt_template(
+        TASTE_PROFILE_PROMPT_FILE,
+        snapshot_json=json.dumps(snapshot, ensure_ascii=False, indent=2),
     )
 
 
 def build_recommendations_prompt(snapshot: dict[str, Any]) -> str:
-    return (
-        "You are recommending books to a specific reader based on their real reading history.\n"
-        "Return strict JSON only with this shape:\n"
-        '{\n'
-        '  "books": [\n'
-        '    {\n'
-        '      "title": "Book title",\n'
-        '      "author": "Author name",\n'
-        '      "reason": "2-3 sentences tied to concrete books, reviews, or patterns in the shelf",\n'
-        '      "confidence": "high",\n'
-        '      "from_to_read": false\n'
-        "    }\n"
-        "  ],\n"
-        '  "reasoning": "3-4 sentences about the overall strategy"\n'
-        "}\n\n"
-        "Rules:\n"
-        "- Recommend exactly 5 books if possible.\n"
-        "- Do not recommend any book already present in read or currently_reading.\n"
-        "- You MAY recommend books from the to_read shelf — if you do, set from_to_read to true and explain why that book is particularly well-suited given the reading history.\n"
-        "- Use the reader's reviews (my_review field) as the primary evidence for their preferences — reviews reveal what they actually valued or disliked, not just what they finished.\n"
-        "- The reader's personal notes (notes field) reveal what specifically resonates with them beyond genre or topic. "
-        "Use notes to identify the *type of thinking* they value, not just the subjects. "
-        "Reference specific notes when explaining why a recommendation fits.\n"
-        "- Treat high ratings without a review as weaker signal than a detailed review at any rating.\n"
-        "- Explain each recommendation by referencing specific books, reviews, or patterns from the library.\n"
-        '- Do not use generic phrases like "if you liked this genre".\n'
-        '- Confidence must be one of: "high", "medium", "low".\n'
-        "- If the data is ambiguous, lower confidence rather than inventing certainty.\n"
-        "- Keep output concise but specific.\n\n"
-        f"Reading data:\n{json.dumps(snapshot, ensure_ascii=False, indent=2)}"
+    return render_prompt_template(
+        RECOMMENDATIONS_PROMPT_FILE,
+        snapshot_json=json.dumps(snapshot, ensure_ascii=False, indent=2),
     )
 
 
@@ -393,10 +374,12 @@ def skip_generation(cache_payload: dict[str, Any], books_hash: str, force: bool)
     opus_model = (recommendations.get("opus") or {}).get("model")
     gpt_model = (recommendations.get("gpt45") or {}).get("model")
     cache_dry_run = bool(cache_payload.get("dry_run"))
+    prompt_hash = cache_payload.get("prompt_hash")
     return (
         cache_dry_run == LLM_DRY_RUN
         and opus_model == ANTHROPIC_MODEL
         and gpt_model == OPENAI_MODEL
+        and prompt_hash == compute_prompt_hash()
     )
 
 
@@ -423,6 +406,7 @@ async def generate_cache_payload(
     result["books_hash"] = books_hash
     result["generated_at"] = utc_now_iso()
     result["dry_run"] = LLM_DRY_RUN
+    result["prompt_hash"] = compute_prompt_hash()
     result["recommendations"]["opus"]["model"] = ANTHROPIC_MODEL
     result["recommendations"]["gpt45"]["model"] = OPENAI_MODEL
 
@@ -497,6 +481,7 @@ def _save_llm_cache_to_db(conn: Any, payload: dict[str, Any]) -> None:
         "books_hash": payload.get("books_hash", ""),
         "generated_at": payload.get("generated_at"),
         "dry_run": payload.get("dry_run", False),
+        "prompt_hash": payload.get("prompt_hash", ""),
     })
     set_llm_cache_value(conn, "taste_profile", payload.get("taste_profile", {}))
     set_llm_cache_value(conn, "recommendations", payload.get("recommendations", {}))
