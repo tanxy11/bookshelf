@@ -55,6 +55,11 @@ class ApiTests(unittest.TestCase):
                             "reasoning": "Strategy",
                         },
                         "gpt45": {"model": "gpt-test", "error": "temporarily unavailable"},
+                        "gemini": {
+                            "model": "gemini-test",
+                            "books": [{"title": "Rec G", "author": "Author G", "reason": "Specific Gemini.", "confidence": "medium"}],
+                            "reasoning": "Gemini strategy",
+                        },
                     },
                 }
             ),
@@ -95,6 +100,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("opus", payload)
+        self.assertIn("gemini", payload)
         self.assertEqual(payload["opus"]["books"][0]["title"], "Rec A")
 
     def test_health_endpoint_prefers_llm_timestamp(self):

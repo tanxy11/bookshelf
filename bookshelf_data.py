@@ -76,6 +76,7 @@ def default_llm_cache() -> dict[str, Any]:
         "recommendations": {
             "opus": {"model": None},
             "gpt45": {"model": None},
+            "gemini": {"model": None},
         },
     }
 
@@ -328,6 +329,7 @@ class BookshelfDB:
         recommendations = self._get_llm_cache_value("recommendations") or {
             "opus": {"model": None},
             "gpt45": {"model": None},
+            "gemini": {"model": None},
         }
 
         return {

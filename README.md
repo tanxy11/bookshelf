@@ -6,7 +6,7 @@ Personal reading site for [book.tanxy.net](https://book.tanxy.net), built from a
 
 - Stores book data in a self-owned SQLite database (migrated from Goodreads CSV)
 - Generates a build-time taste profile from the read shelf
-- Generates side-by-side AI Picks (recommendations) from Anthropic and OpenAI, using reviews as primary signal; can surface books already on the to-read shelf
+- Generates three-way AI Picks (recommendations) from Anthropic, OpenAI, and Gemini, using reviews as primary signal; can surface books already on the to-read shelf
 - Serves everything through a small FastAPI backend
 - Renders a single-file frontend with search, filters, sort controls, and expandable book cards
 - Supports adding and editing books directly through the site (auth required)
@@ -53,6 +53,7 @@ Required:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
 
 Optional:
 
@@ -60,6 +61,7 @@ Optional:
 - `BOOKSHELF_AUTH_TOKEN` — bearer token for write endpoints
 - `ANTHROPIC_MODEL`
 - `OPENAI_MODEL`
+- `GEMINI_MODEL`
 - `LLM_DRY_RUN`
 - `ENVIRONMENT`
 - `BOOKS_DATA` — JSON fallback when `DB_PATH` is unset
@@ -154,7 +156,7 @@ make seed-staging          # copy prod DB → staging DB on VPS
 ```
 GET    /api/books              # All shelves + stats
 GET    /api/taste-profile      # Anthropic-generated reading taste analysis
-GET    /api/recommendations    # Side-by-side Anthropic + OpenAI recommendations
+GET    /api/recommendations    # Three-way Anthropic + OpenAI + Gemini recommendations
 GET    /api/health             # Server status + data backend (sqlite/json)
 GET    /api/lookup?q=...       # Google Books metadata search
 GET    /api/llm-status         # LLM regeneration status (idle/running)
@@ -184,7 +186,7 @@ The app auto-detects: if `DB_PATH` is set and the file exists, it uses SQLite. O
 
 `scripts/generate_llm.py` computes a SHA-256 hash from the sorted read shelf using title, author, rating, and review. If the hash matches the cache, generation is skipped unless `--force` is used.
 
-Anthropic powers the taste profile and one side of the recommendations. OpenAI powers the second side. If one provider fails, the other still gets cached and displayed.
+Anthropic powers the taste profile and one recommendation column. OpenAI and Gemini power the other two recommendation columns. If one provider fails, the others still get cached and displayed.
 
 If `LLM_DRY_RUN=true`, the generator writes placeholder content marked with `[DRY RUN]` without making live API calls.
 

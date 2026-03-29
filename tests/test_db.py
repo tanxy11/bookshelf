@@ -157,6 +157,18 @@ SAMPLE_LLM_CACHE = {
             "reasoning": "Sci-fi lover strategy.",
         },
         "gpt45": {"model": "gpt-test", "error": "unavailable"},
+        "gemini": {
+            "model": "gemini-test",
+            "books": [
+                {
+                    "title": "The Left Hand of Darkness",
+                    "author": "Ursula K. Le Guin",
+                    "reason": "Thoughtful speculative fiction.",
+                    "confidence": "medium",
+                }
+            ],
+            "reasoning": "Leans toward reflective science fiction.",
+        },
     },
 }
 
@@ -428,6 +440,7 @@ class BookshelfDBTests(unittest.TestCase):
         recs = self.db_store.recommendations()
         self.assertIsNotNone(recs)
         self.assertIn("opus", recs)
+        self.assertIn("gemini", recs)
         self.assertEqual(recs["opus"]["books"][0]["title"], "Foundation")
 
     def test_health_returns_expected_keys(self):
@@ -557,6 +570,7 @@ class ApiSqliteTests(unittest.TestCase):
         resp = self.client.get("/api/recommendations")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("opus", resp.json())
+        self.assertIn("gemini", resp.json())
 
     def test_health_endpoint(self):
         resp = self.client.get("/api/health")
