@@ -69,6 +69,7 @@ class GenerateLlmTests(unittest.TestCase):
         cache_payload["prompt_hash"] = generate_llm.compute_prompt_hash()
         cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
         cache_payload["recommendations"]["gpt45"]["model"] = generate_llm.OPENAI_MODEL
+        cache_payload["recommendations"]["gemini"]["model"] = generate_llm.GEMINI_MODEL
         self.assertTrue(generate_llm.skip_generation(cache_payload, books_hash, force=False))
         self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=True))
 
@@ -80,6 +81,7 @@ class GenerateLlmTests(unittest.TestCase):
         cache_payload["prompt_hash"] = generate_llm.compute_prompt_hash()
         cache_payload["recommendations"]["opus"]["model"] = "old-anthropic-model"
         cache_payload["recommendations"]["gpt45"]["model"] = "old-openai-model"
+        cache_payload["recommendations"]["gemini"]["model"] = "old-gemini-model"
 
         self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=False))
 
@@ -91,6 +93,7 @@ class GenerateLlmTests(unittest.TestCase):
         cache_payload["prompt_hash"] = "old-prompt-hash"
         cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
         cache_payload["recommendations"]["gpt45"]["model"] = generate_llm.OPENAI_MODEL
+        cache_payload["recommendations"]["gemini"]["model"] = generate_llm.GEMINI_MODEL
 
         self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=False))
 
@@ -109,7 +112,15 @@ class GenerateLlmTests(unittest.TestCase):
                 return False
 
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key", "OPENAI_API_KEY": "test-key"}, clear=False),
+            patch.dict(
+                os.environ,
+                {
+                    "ANTHROPIC_API_KEY": "test-key",
+                    "OPENAI_API_KEY": "test-key",
+                    "GEMINI_API_KEY": "test-key",
+                },
+                clear=False,
+            ),
             patch.object(generate_llm.httpx, "Timeout", return_value=None),
             patch.object(generate_llm.httpx, "AsyncClient", FakeAsyncClient),
             patch.object(
@@ -127,6 +138,11 @@ class GenerateLlmTests(unittest.TestCase):
                 "generate_openai_recommendations",
                 AsyncMock(return_value={"model": "gpt-test", "books": [{"title": "Rec", "author": "Author", "reason": "Specific.", "confidence": "high"}], "reasoning": "Pattern-driven."}),
             ),
+            patch.object(
+                generate_llm,
+                "generate_gemini_recommendations",
+                AsyncMock(return_value={"model": "gemini-test", "books": [{"title": "Rec 2", "author": "Author 2", "reason": "Specific 2.", "confidence": "medium"}], "reasoning": "Another pattern-driven view."}),
+            ),
         ):
             payload, skipped = asyncio.run(
                 generate_llm.generate_cache_payload(books_payload, cache_payload, force=False)
@@ -134,6 +150,7 @@ class GenerateLlmTests(unittest.TestCase):
 
         self.assertFalse(skipped)
         self.assertEqual(payload["recommendations"]["gpt45"]["model"], "gpt-test")
+        self.assertEqual(payload["recommendations"]["gemini"]["model"], "gemini-test")
         self.assertIn("error", payload["recommendations"]["opus"])
         self.assertEqual(payload["taste_profile"]["summary"], "Sharp.")
         self.assertFalse(payload["dry_run"])
@@ -147,6 +164,7 @@ class GenerateLlmTests(unittest.TestCase):
             patch.object(generate_llm, "generate_taste_profile", AsyncMock(side_effect=AssertionError("should not call providers"))),
             patch.object(generate_llm, "generate_anthropic_recommendations", AsyncMock(side_effect=AssertionError("should not call providers"))),
             patch.object(generate_llm, "generate_openai_recommendations", AsyncMock(side_effect=AssertionError("should not call providers"))),
+            patch.object(generate_llm, "generate_gemini_recommendations", AsyncMock(side_effect=AssertionError("should not call providers"))),
         ):
             payload, skipped = asyncio.run(
                 generate_llm.generate_cache_payload(books_payload, cache_payload, force=False)
@@ -157,6 +175,7 @@ class GenerateLlmTests(unittest.TestCase):
         self.assertEqual(payload["taste_profile"]["summary"], "[DRY RUN] Mock taste profile")
         self.assertEqual(payload["recommendations"]["opus"]["books"][0]["title"], "[DRY RUN] Anthropic Pick 1")
         self.assertEqual(payload["recommendations"]["gpt45"]["books"][0]["title"], "[DRY RUN] OpenAI Pick 1")
+        self.assertEqual(payload["recommendations"]["gemini"]["books"][0]["title"], "[DRY RUN] Gemini Pick 1")
 
     def test_main_persists_generated_cache(self):
         books_payload = sample_books_payload()
@@ -178,6 +197,11 @@ class GenerateLlmTests(unittest.TestCase):
                 "model": "gpt-test",
                 "books": [{"title": "Rec", "author": "Author", "reason": "Specific.", "confidence": "high"}],
                 "reasoning": "Reasoning",
+            }
+            fake_payload["recommendations"]["gemini"] = {
+                "model": "gemini-test",
+                "books": [{"title": "Rec 2", "author": "Author 2", "reason": "Specific 2.", "confidence": "medium"}],
+                "reasoning": "Reasoning 2",
             }
 
             with patch.object(
@@ -203,6 +227,7 @@ class GenerateLlmTests(unittest.TestCase):
             saved = load_json(cache_path, default_llm_cache)
             self.assertEqual(saved["books_hash"], "abc123")
             self.assertEqual(saved["recommendations"]["gpt45"]["model"], "gpt-test")
+            self.assertEqual(saved["recommendations"]["gemini"]["model"], "gemini-test")
 
 
     def test_build_library_snapshot_includes_notes(self):
@@ -267,6 +292,11 @@ class GenerateLlmTests(unittest.TestCase):
                 "model": "gpt-test",
                 "books": [{"title": "Rec", "author": "Author", "reason": "Specific.", "confidence": "high"}],
                 "reasoning": "Reasoning",
+            }
+            fake_payload["recommendations"]["gemini"] = {
+                "model": "gemini-test",
+                "books": [{"title": "Rec 2", "author": "Author 2", "reason": "Specific 2.", "confidence": "medium"}],
+                "reasoning": "Reasoning 2",
             }
 
             with patch.object(

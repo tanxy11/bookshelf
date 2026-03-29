@@ -43,7 +43,7 @@ make seed-staging    # SSH: copy prod DB → staging DB on VPS
 
 **Data pipeline (build-time, legacy):**
 1. `scripts/parse_goodreads.py` — parses Goodreads CSV export → `data/books.json`
-2. `scripts/generate_llm.py` — calls Anthropic + OpenAI APIs → `data/llm_cache.json` (skips if SHA-256 hash of read shelf is unchanged)
+2. `scripts/generate_llm.py` — calls Anthropic + OpenAI + Gemini APIs → `data/llm_cache.json` (skips if SHA-256 hash of read shelf is unchanged)
 
 **Runtime:**
 - `api/main.py` — FastAPI server; reads from SQLite via `BookshelfDB` (or JSON via `BookshelfStore` as fallback)
@@ -89,8 +89,10 @@ Loaded automatically from `.env` at repo root via `load_env_file()`. See `.env.e
 |----------|---------|-------|
 | `ANTHROPIC_API_KEY` | — | Required for taste profile + recommendations |
 | `OPENAI_API_KEY` | — | Required for GPT recommendations |
+| `GEMINI_API_KEY` | — | Required for Gemini recommendations |
 | `ANTHROPIC_MODEL` | `claude-opus-4-20250514` | |
 | `OPENAI_MODEL` | `gpt-4.1` | |
+| `GEMINI_MODEL` | `gemini-3-flash-preview` | |
 | `DB_PATH` | — | Path to SQLite DB; enables SQLite backend when set and file exists |
 | `BOOKS_DATA` | `data/books.json` | JSON fallback when `DB_PATH` is unset |
 | `LLM_CACHE_DATA` | `data/llm_cache.json` | JSON fallback when `DB_PATH` is unset |
@@ -103,7 +105,7 @@ Loaded automatically from `.env` at repo root via `load_env_file()`. See `.env.e
 ```
 GET    /api/books              # All shelves + stats
 GET    /api/taste-profile      # Anthropic-generated reading taste analysis
-GET    /api/recommendations    # Anthropic + OpenAI book recommendations (side-by-side)
+GET    /api/recommendations    # Anthropic + OpenAI + Gemini book recommendations
 GET    /api/health             # Server status + data availability flags + data_backend (sqlite/json)
 GET    /api/lookup?q=...       # Google Books metadata search
 GET    /api/llm-status         # LLM regeneration status (idle/running)

@@ -41,9 +41,11 @@ from bookshelf_data import (
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-20250514")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 REQUEST_TIMEOUT_SECONDS = 120
 ROOT_DIR = Path(__file__).resolve().parents[1]
 PROMPTS_DIR = ROOT_DIR / "scripts" / "prompts"
@@ -54,6 +56,7 @@ load_env_file(ROOT_DIR / ".env")
 
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", GEMINI_MODEL)
 LLM_DRY_RUN = env_truthy("LLM_DRY_RUN", default=False)
 
 
@@ -306,6 +309,45 @@ async def call_openai_json(
     return extract_json_object(text)
 
 
+async def call_gemini_json(
+    client: httpx.AsyncClient, api_key: str, prompt: str, max_tokens: int
+) -> dict[str, Any]:
+    response = await client.post(
+        f"{GEMINI_API_BASE_URL}/{GEMINI_MODEL}:generateContent",
+        headers={
+            "x-goog-api-key": api_key,
+            "Content-Type": "application/json",
+        },
+        json={
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.6,
+                "maxOutputTokens": max_tokens,
+                "responseMimeType": "application/json",
+            },
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        raise ValueError(f"Gemini returned no candidates: {json.dumps(payload)}")
+
+    content = candidates[0].get("content") or {}
+    parts = content.get("parts") or []
+    text = "\n".join(
+        part.get("text", "") for part in parts if isinstance(part, dict) and part.get("text")
+    )
+    if not text.strip():
+        raise ValueError(f"Gemini returned no text payload: {json.dumps(payload)}")
+    return extract_json_object(text)
+
+
 async def with_retry(coro_factory, label: str) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(3):
@@ -366,6 +408,21 @@ async def generate_openai_recommendations(
     return normalized
 
 
+async def generate_gemini_recommendations(
+    client: httpx.AsyncClient,
+    snapshot: dict[str, Any],
+    api_key: str,
+    existing_books: set[tuple[str, str]],
+) -> dict[str, Any]:
+    raw = await with_retry(
+        lambda: call_gemini_json(client, api_key, build_recommendations_prompt(snapshot), 2600),
+        "Gemini recommendations",
+    )
+    normalized = normalize_recommendations(raw, existing_books)
+    normalized["model"] = GEMINI_MODEL
+    return normalized
+
+
 def skip_generation(cache_payload: dict[str, Any], books_hash: str, force: bool) -> bool:
     if force or cache_payload.get("books_hash") != books_hash:
         return False
@@ -373,12 +430,14 @@ def skip_generation(cache_payload: dict[str, Any], books_hash: str, force: bool)
     recommendations = cache_payload.get("recommendations") or {}
     opus_model = (recommendations.get("opus") or {}).get("model")
     gpt_model = (recommendations.get("gpt45") or {}).get("model")
+    gemini_model = (recommendations.get("gemini") or {}).get("model")
     cache_dry_run = bool(cache_payload.get("dry_run"))
     prompt_hash = cache_payload.get("prompt_hash")
     return (
         cache_dry_run == LLM_DRY_RUN
         and opus_model == ANTHROPIC_MODEL
         and gpt_model == OPENAI_MODEL
+        and gemini_model == GEMINI_MODEL
         and prompt_hash == compute_prompt_hash()
     )
 
@@ -401,6 +460,7 @@ async def generate_cache_payload(
 
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()
 
     result = default_llm_cache()
     result["books_hash"] = books_hash
@@ -409,6 +469,7 @@ async def generate_cache_payload(
     result["prompt_hash"] = compute_prompt_hash()
     result["recommendations"]["opus"]["model"] = ANTHROPIC_MODEL
     result["recommendations"]["gpt45"]["model"] = OPENAI_MODEL
+    result["recommendations"]["gemini"]["model"] = GEMINI_MODEL
 
     if LLM_DRY_RUN:
         result["taste_profile"] = build_mock_taste_profile()
@@ -417,6 +478,9 @@ async def generate_cache_payload(
         )
         result["recommendations"]["gpt45"] = build_mock_recommendations(
             OPENAI_MODEL, "OpenAI"
+        )
+        result["recommendations"]["gemini"] = build_mock_recommendations(
+            GEMINI_MODEL, "Gemini"
         )
         return result, False
 
@@ -440,6 +504,9 @@ async def generate_cache_payload(
             generate_openai_recommendations(client, snapshot, openai_key, all_books)
             if openai_key
             else None,
+            generate_gemini_recommendations(client, snapshot, gemini_key, all_books)
+            if gemini_key
+            else None,
         ]
 
         if recommendation_tasks[0] is None:
@@ -452,19 +519,28 @@ async def generate_cache_payload(
                 "model": OPENAI_MODEL,
                 "error": "OPENAI_API_KEY is not set.",
             }
+        if recommendation_tasks[2] is None:
+            result["recommendations"]["gemini"] = {
+                "model": GEMINI_MODEL,
+                "error": "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
+            }
 
         active_tasks = [task for task in recommendation_tasks if task is not None]
         responses = await asyncio.gather(*active_tasks, return_exceptions=True)
 
         response_index = 0
-        for provider_key, task in (("opus", recommendation_tasks[0]), ("gpt45", recommendation_tasks[1])):
+        for provider_key, task, model_name in (
+            ("opus", recommendation_tasks[0], ANTHROPIC_MODEL),
+            ("gpt45", recommendation_tasks[1], OPENAI_MODEL),
+            ("gemini", recommendation_tasks[2], GEMINI_MODEL),
+        ):
             if task is None:
                 continue
             response = responses[response_index]
             response_index += 1
             if isinstance(response, Exception):
                 result["recommendations"][provider_key] = {
-                    "model": ANTHROPIC_MODEL if provider_key == "opus" else OPENAI_MODEL,
+                    "model": model_name,
                     "error": str(response),
                 }
             else:
@@ -495,10 +571,12 @@ def _print_result(label: str, payload: dict[str, Any]) -> None:
     print(f"  books_hash: {payload.get('books_hash')}")
     print(f"  dry_run: {'true' if payload.get('dry_run') else 'false'}")
     print(f"  taste_profile: {'ok' if taste_ok else 'error'}")
+    recommendation_status = ", ".join(
+        f"{provider_key}={'ok' if (payload['recommendations'].get(provider_key) or {}).get('books') else 'error'}"
+        for provider_key in ("opus", "gpt45", "gemini")
+    )
     print(
-        "  recommendations: "
-        f"opus={'ok' if payload['recommendations']['opus'].get('books') else 'error'}, "
-        f"gpt45={'ok' if payload['recommendations']['gpt45'].get('books') else 'error'}"
+        f"  recommendations: {recommendation_status}"
     )
 
 

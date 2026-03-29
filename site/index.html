@@ -398,7 +398,7 @@
 
     .recommendation-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 18px;
     }
 
@@ -451,6 +451,17 @@
       border-radius: 18px;
       background: rgba(255, 252, 247, 0.74);
       padding: 16px;
+    }
+
+    .recommendation-empty {
+      margin-top: 14px;
+      padding: 18px 16px;
+      border: 1px dashed rgba(122, 92, 62, 0.24);
+      border-radius: 18px;
+      background: rgba(255, 252, 247, 0.58);
+      color: var(--muted);
+      font-size: .86rem;
+      line-height: 1.6;
     }
 
     .recommendation-meta {
@@ -1167,7 +1178,7 @@
     <div class="section-header">
       <div>
         <h2 class="section-heading">AI Picks</h2>
-        <p class="section-subtitle">Two models, one shelf, and a chance to see where they agree or diverge.</p>
+        <p class="section-subtitle">Three models, one shelf, and a chance to see where they agree or diverge.</p>
       </div>
     </div>
     <button class="collapsible-toggle" id="recommendations-toggle">
@@ -1587,44 +1598,58 @@ function renderRecommendations(recommendations) {
   const footer = document.getElementById('recommendation-footer');
 
   const providers = [
-    ['opus', 'Claude Opus', recommendations && recommendations.opus],
-    ['gpt45', 'GPT-4.5', recommendations && recommendations.gpt45],
+    ['opus', 'Claude', recommendations && recommendations.opus],
+    ['gpt45', 'ChatGPT', recommendations && recommendations.gpt45],
+    ['gemini', 'Gemini', recommendations && recommendations.gemini],
   ];
-  const available = providers.filter(([, , entry]) => entry && Array.isArray(entry.books) && entry.books.length);
   const unavailable = providers.filter(([, , entry]) => entry && entry.error);
 
-  if (!available.length) {
+  if (!recommendations) {
     section.classList.add('hidden');
     return;
   }
 
   section.classList.remove('hidden');
-  grid.classList.toggle('single', available.length === 1);
+  grid.classList.remove('single');
 
   if (unavailable.length === 1) {
     advisory.classList.remove('hidden');
     advisory.textContent = `${unavailable[0][1]} was unavailable when this set was last generated.`;
+  } else if (unavailable.length > 1) {
+    advisory.classList.remove('hidden');
+    advisory.textContent = `${unavailable.map(([, label]) => label).join(' and ')} were unavailable when this set was last generated.`;
   } else {
     advisory.classList.add('hidden');
     advisory.textContent = '';
   }
 
-  const overlap = new Set();
-  if (available.length === 2) {
-    const left = new Set(available[0][2].books.map(book => `${(book.title || '').toLowerCase()}::${(book.author || '').toLowerCase()}`));
-    available[1][2].books.forEach(book => {
+  const overlapCounts = new Map();
+  providers.forEach(([, , entry]) => {
+    ((entry && entry.books) || []).forEach(book => {
       const key = `${(book.title || '').toLowerCase()}::${(book.author || '').toLowerCase()}`;
-      if (left.has(key)) overlap.add(key);
+      overlapCounts.set(key, (overlapCounts.get(key) || 0) + 1);
     });
-  }
+  });
 
-  grid.innerHTML = available.map(([key, label, entry]) => `
+  grid.innerHTML = providers.map(([key, label, entry]) => {
+    const hasBooks = entry && Array.isArray(entry.books) && entry.books.length;
+    const modelLabel = entry && entry.model ? entry.model : 'not generated yet';
+    const reasoning = entry && entry.reasoning
+      ? entry.reasoning
+      : hasBooks
+        ? ''
+        : entry && entry.error
+          ? 'This provider did not return recommendations in the last generation.'
+          : 'Not generated yet. Run LLM regeneration to fill this column.';
+
+    return `
     <article class="recommendation-column">
       <div class="column-header">
         <div class="column-title">${escHtml(label)}</div>
-        <span class="chip">${escHtml(entry.model || 'unknown model')}</span>
+        <span class="chip">${escHtml(modelLabel)}</span>
       </div>
-      <p class="reasoning">${escHtml(entry.reasoning || '')}</p>
+      <p class="reasoning">${escHtml(reasoning)}</p>
+      ${hasBooks ? `
       <div class="recommendation-list">
         ${(entry.books || []).map(book => {
           const bookKey = `${(book.title || '').toLowerCase()}::${(book.author || '').toLowerCase()}`;
@@ -1636,7 +1661,7 @@ function renderRecommendations(recommendations) {
                   <div class="recommendation-author">${escHtml(book.author)}</div>
                 </div>
                 <div class="recommendation-badges">
-                  ${overlap.has(bookKey) ? '<span class="agree-badge">Both agree</span>' : ''}
+                  ${(overlapCounts.get(bookKey) || 0) > 1 ? '<span class="agree-badge">Shared pick</span>' : ''}
                   ${book.from_to_read ? '<span class="to-read-badge">On your list</span>' : ''}
                   <span class="confidence-badge ${escHtml((book.confidence || 'medium').toLowerCase())}">${escHtml(book.confidence || 'medium')}</span>
                 </div>
@@ -1646,8 +1671,16 @@ function renderRecommendations(recommendations) {
           `;
         }).join('')}
       </div>
+      ` : `
+      <div class="recommendation-empty">
+        ${entry && entry.error
+          ? 'Unavailable in the last cached generation.'
+          : 'Not generated yet.'}
+      </div>
+      `}
     </article>
-  `).join('');
+  `;
+  }).join('');
 
   const generatedAt = healthPayload && (healthPayload.llm_generated_at || healthPayload.generated_at);
   footer.textContent = generatedAt
