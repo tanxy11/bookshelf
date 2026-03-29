@@ -32,6 +32,7 @@ from bookshelf_data import (
     env_truthy,
     load_json,
     load_env_file,
+    merge_defaults,
     normalize_book_key,
     save_json,
     successful_recommendations,
@@ -58,6 +59,17 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", GEMINI_MODEL)
 LLM_DRY_RUN = env_truthy("LLM_DRY_RUN", default=False)
+RECOMMENDATION_PROVIDER_KEYS = ("opus", "gpt45", "gemini")
+PROVIDER_ALIASES = {
+    "claude": "opus",
+    "anthropic": "opus",
+    "opus": "opus",
+    "chatgpt": "gpt45",
+    "openai": "gpt45",
+    "gpt": "gpt45",
+    "gpt45": "gpt45",
+    "gemini": "gemini",
+}
 
 
 def build_mock_taste_profile() -> dict[str, Any]:
@@ -423,32 +435,91 @@ async def generate_gemini_recommendations(
     return normalized
 
 
-def skip_generation(cache_payload: dict[str, Any], books_hash: str, force: bool) -> bool:
+def normalize_provider_selection(raw_values: list[str] | None) -> set[str] | None:
+    if not raw_values:
+        return None
+
+    selected: set[str] = set()
+    for raw_value in raw_values:
+        for part in raw_value.split(","):
+            provider = part.strip().lower()
+            if not provider:
+                continue
+            mapped = PROVIDER_ALIASES.get(provider)
+            if mapped is None:
+                valid = ", ".join(sorted(PROVIDER_ALIASES))
+                raise ValueError(f"Unknown provider '{provider}'. Valid values: {valid}")
+            selected.add(mapped)
+
+    return selected or None
+
+
+def skip_generation(
+    cache_payload: dict[str, Any],
+    books_hash: str,
+    force: bool,
+    selected_providers: set[str] | None = None,
+    refresh_taste_profile: bool | None = None,
+) -> bool:
+    if refresh_taste_profile is None:
+        refresh_taste_profile = selected_providers is None
+
     if force or cache_payload.get("books_hash") != books_hash:
         return False
 
     recommendations = cache_payload.get("recommendations") or {}
-    opus_model = (recommendations.get("opus") or {}).get("model")
-    gpt_model = (recommendations.get("gpt45") or {}).get("model")
-    gemini_model = (recommendations.get("gemini") or {}).get("model")
     cache_dry_run = bool(cache_payload.get("dry_run"))
     prompt_hash = cache_payload.get("prompt_hash")
-    return (
-        cache_dry_run == LLM_DRY_RUN
-        and opus_model == ANTHROPIC_MODEL
-        and gpt_model == OPENAI_MODEL
-        and gemini_model == GEMINI_MODEL
-        and prompt_hash == compute_prompt_hash()
-    )
+    if cache_dry_run != LLM_DRY_RUN or prompt_hash != compute_prompt_hash():
+        return False
+
+    if selected_providers is None:
+        if cache_payload.get("partial_refresh"):
+            return False
+        return (
+            (recommendations.get("opus") or {}).get("model") == ANTHROPIC_MODEL
+            and (recommendations.get("gpt45") or {}).get("model") == OPENAI_MODEL
+            and (recommendations.get("gemini") or {}).get("model") == GEMINI_MODEL
+        )
+
+    if refresh_taste_profile:
+        taste_profile = cache_payload.get("taste_profile") or {}
+        if taste_profile.get("error") or not taste_profile.get("summary"):
+            return False
+
+    runtime_models = {
+        "opus": ANTHROPIC_MODEL,
+        "gpt45": OPENAI_MODEL,
+        "gemini": GEMINI_MODEL,
+    }
+    for provider in selected_providers:
+        entry = recommendations.get(provider) or {}
+        if entry.get("model") != runtime_models[provider]:
+            return False
+        if entry.get("error") or not entry.get("books"):
+            return False
+
+    return True
 
 
 async def generate_cache_payload(
     books_payload: dict[str, Any],
     cache_payload: dict[str, Any],
     force: bool = False,
+    selected_providers: set[str] | None = None,
+    refresh_taste_profile: bool | None = None,
 ) -> tuple[dict[str, Any], bool]:
+    if refresh_taste_profile is None:
+        refresh_taste_profile = selected_providers is None
+
     books_hash = compute_books_hash(books_payload)
-    if skip_generation(cache_payload, books_hash, force):
+    if skip_generation(
+        cache_payload,
+        books_hash,
+        force,
+        selected_providers=selected_providers,
+        refresh_taste_profile=refresh_taste_profile,
+    ):
         return cache_payload, True
 
     snapshot = build_library_snapshot(books_payload)
@@ -461,79 +532,96 @@ async def generate_cache_payload(
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()
+    target_providers = (
+        tuple(provider for provider in RECOMMENDATION_PROVIDER_KEYS if provider in selected_providers)
+        if selected_providers is not None
+        else RECOMMENDATION_PROVIDER_KEYS
+    )
 
-    result = default_llm_cache()
+    result = (
+        default_llm_cache()
+        if selected_providers is None and refresh_taste_profile
+        else merge_defaults(default_llm_cache(), cache_payload)
+    )
     result["books_hash"] = books_hash
     result["generated_at"] = utc_now_iso()
     result["dry_run"] = LLM_DRY_RUN
     result["prompt_hash"] = compute_prompt_hash()
-    result["recommendations"]["opus"]["model"] = ANTHROPIC_MODEL
-    result["recommendations"]["gpt45"]["model"] = OPENAI_MODEL
-    result["recommendations"]["gemini"]["model"] = GEMINI_MODEL
+    result["partial_refresh"] = not (selected_providers is None and refresh_taste_profile)
+    runtime_models = {
+        "opus": ANTHROPIC_MODEL,
+        "gpt45": OPENAI_MODEL,
+        "gemini": GEMINI_MODEL,
+    }
+    for provider in target_providers:
+        result["recommendations"][provider]["model"] = runtime_models[provider]
 
     if LLM_DRY_RUN:
-        result["taste_profile"] = build_mock_taste_profile()
-        result["recommendations"]["opus"] = build_mock_recommendations(
-            ANTHROPIC_MODEL, "Anthropic"
-        )
-        result["recommendations"]["gpt45"] = build_mock_recommendations(
-            OPENAI_MODEL, "OpenAI"
-        )
-        result["recommendations"]["gemini"] = build_mock_recommendations(
-            GEMINI_MODEL, "Gemini"
-        )
+        if refresh_taste_profile:
+            result["taste_profile"] = build_mock_taste_profile()
+        if "opus" in target_providers:
+            result["recommendations"]["opus"] = build_mock_recommendations(
+                ANTHROPIC_MODEL, "Anthropic"
+            )
+        if "gpt45" in target_providers:
+            result["recommendations"]["gpt45"] = build_mock_recommendations(
+                OPENAI_MODEL, "OpenAI"
+            )
+        if "gemini" in target_providers:
+            result["recommendations"]["gemini"] = build_mock_recommendations(
+                GEMINI_MODEL, "Gemini"
+            )
         return result, False
 
     timeout = httpx.Timeout(REQUEST_TIMEOUT_SECONDS)
     async with httpx.AsyncClient(timeout=timeout) as client:
-        if anthropic_key:
-            try:
-                result["taste_profile"] = await generate_taste_profile(client, snapshot, anthropic_key)
-            except Exception as exc:  # noqa: BLE001
-                result["taste_profile"] = {"error": str(exc), "model": ANTHROPIC_MODEL}
-        else:
-            result["taste_profile"] = {
-                "error": "ANTHROPIC_API_KEY is not set.",
-                "model": ANTHROPIC_MODEL,
-            }
+        if refresh_taste_profile:
+            if anthropic_key:
+                try:
+                    result["taste_profile"] = await generate_taste_profile(client, snapshot, anthropic_key)
+                except Exception as exc:  # noqa: BLE001
+                    result["taste_profile"] = {"error": str(exc), "model": ANTHROPIC_MODEL}
+            else:
+                result["taste_profile"] = {
+                    "error": "ANTHROPIC_API_KEY is not set.",
+                    "model": ANTHROPIC_MODEL,
+                }
 
-        recommendation_tasks = [
-            generate_anthropic_recommendations(client, snapshot, anthropic_key, all_books)
-            if anthropic_key
-            else None,
-            generate_openai_recommendations(client, snapshot, openai_key, all_books)
-            if openai_key
-            else None,
-            generate_gemini_recommendations(client, snapshot, gemini_key, all_books)
-            if gemini_key
-            else None,
-        ]
+        recommendation_tasks: list[tuple[str, asyncio.Future | Any | None, str]] = []
+        provider_factories = {
+            "opus": (
+                anthropic_key,
+                lambda: generate_anthropic_recommendations(client, snapshot, anthropic_key, all_books),
+                "ANTHROPIC_API_KEY is not set.",
+            ),
+            "gpt45": (
+                openai_key,
+                lambda: generate_openai_recommendations(client, snapshot, openai_key, all_books),
+                "OPENAI_API_KEY is not set.",
+            ),
+            "gemini": (
+                gemini_key,
+                lambda: generate_gemini_recommendations(client, snapshot, gemini_key, all_books),
+                "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
+            ),
+        }
 
-        if recommendation_tasks[0] is None:
-            result["recommendations"]["opus"] = {
-                "model": ANTHROPIC_MODEL,
-                "error": "ANTHROPIC_API_KEY is not set.",
-            }
-        if recommendation_tasks[1] is None:
-            result["recommendations"]["gpt45"] = {
-                "model": OPENAI_MODEL,
-                "error": "OPENAI_API_KEY is not set.",
-            }
-        if recommendation_tasks[2] is None:
-            result["recommendations"]["gemini"] = {
-                "model": GEMINI_MODEL,
-                "error": "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
-            }
+        for provider in target_providers:
+            api_key, factory, missing_message = provider_factories[provider]
+            if api_key:
+                recommendation_tasks.append((provider, factory(), runtime_models[provider]))
+            else:
+                result["recommendations"][provider] = {
+                    "model": runtime_models[provider],
+                    "error": missing_message,
+                }
+                recommendation_tasks.append((provider, None, runtime_models[provider]))
 
-        active_tasks = [task for task in recommendation_tasks if task is not None]
+        active_tasks = [task for _, task, _ in recommendation_tasks if task is not None]
         responses = await asyncio.gather(*active_tasks, return_exceptions=True)
 
         response_index = 0
-        for provider_key, task, model_name in (
-            ("opus", recommendation_tasks[0], ANTHROPIC_MODEL),
-            ("gpt45", recommendation_tasks[1], OPENAI_MODEL),
-            ("gemini", recommendation_tasks[2], GEMINI_MODEL),
-        ):
+        for provider_key, task, model_name in recommendation_tasks:
             if task is None:
                 continue
             response = responses[response_index]
@@ -558,6 +646,7 @@ def _save_llm_cache_to_db(conn: Any, payload: dict[str, Any]) -> None:
         "generated_at": payload.get("generated_at"),
         "dry_run": payload.get("dry_run", False),
         "prompt_hash": payload.get("prompt_hash", ""),
+        "partial_refresh": payload.get("partial_refresh", False),
     })
     set_llm_cache_value(conn, "taste_profile", payload.get("taste_profile", {}))
     set_llm_cache_value(conn, "recommendations", payload.get("recommendations", {}))
@@ -586,7 +675,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache", default="data/llm_cache.json", help="Path to llm_cache.json")
     parser.add_argument("--db", default=None, help="Path to SQLite database (overrides --books/--cache)")
     parser.add_argument("--force", action="store_true", help="Always regenerate, ignoring books_hash")
-    return parser.parse_args()
+    parser.add_argument(
+        "--provider",
+        action="append",
+        default=[],
+        help="Recommendation provider(s) to refresh: claude, chatgpt, gemini. Repeat or comma-separate.",
+    )
+    parser.add_argument(
+        "--with-taste-profile",
+        action="store_true",
+        help="When using --provider, also refresh the Anthropic taste profile.",
+    )
+    args = parser.parse_args()
+    try:
+        args.providers = normalize_provider_selection(args.provider)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return args
 
 
 def main() -> int:
@@ -594,11 +699,27 @@ def main() -> int:
 
     db_path = args.db or os.getenv("DB_PATH", "").strip()
     if db_path and Path(db_path).exists():
-        return _main_sqlite(Path(db_path), force=args.force)
-    return _main_json(Path(args.books), Path(args.cache), force=args.force)
+        return _main_sqlite(
+            Path(db_path),
+            force=args.force,
+            selected_providers=args.providers,
+            refresh_taste_profile=args.with_taste_profile,
+        )
+    return _main_json(
+        Path(args.books),
+        Path(args.cache),
+        force=args.force,
+        selected_providers=args.providers,
+        refresh_taste_profile=args.with_taste_profile,
+    )
 
 
-def _main_sqlite(db_path: Path, force: bool) -> int:
+def _main_sqlite(
+    db_path: Path,
+    force: bool,
+    selected_providers: set[str] | None = None,
+    refresh_taste_profile: bool = False,
+) -> int:
     from bookshelf_data import BookshelfDB
 
     store = BookshelfDB(db_path)
@@ -606,7 +727,13 @@ def _main_sqlite(db_path: Path, force: bool) -> int:
     cache_payload = store.llm_cache()
 
     generated_payload, skipped = asyncio.run(
-        generate_cache_payload(books_payload, cache_payload, force=force)
+        generate_cache_payload(
+            books_payload,
+            cache_payload,
+            force=force,
+            selected_providers=selected_providers,
+            refresh_taste_profile=refresh_taste_profile,
+        )
     )
 
     if skipped:
@@ -621,7 +748,13 @@ def _main_sqlite(db_path: Path, force: bool) -> int:
     return 0 if taste_ok or recommendations_ok else 1
 
 
-def _main_json(books_path: Path, cache_path: Path, force: bool) -> int:
+def _main_json(
+    books_path: Path,
+    cache_path: Path,
+    force: bool,
+    selected_providers: set[str] | None = None,
+    refresh_taste_profile: bool = False,
+) -> int:
     if not books_path.exists():
         print(f"Error: books data not found: {books_path}", file=sys.stderr)
         return 1
@@ -630,7 +763,13 @@ def _main_json(books_path: Path, cache_path: Path, force: bool) -> int:
     cache_payload = load_json(cache_path, default_llm_cache)
 
     generated_payload, skipped = asyncio.run(
-        generate_cache_payload(books_payload, cache_payload, force=force)
+        generate_cache_payload(
+            books_payload,
+            cache_payload,
+            force=force,
+            selected_providers=selected_providers,
+            refresh_taste_profile=refresh_taste_profile,
+        )
     )
 
     if skipped:
