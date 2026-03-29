@@ -108,6 +108,10 @@ make parse                 # CSV → data/books.json (legacy)
 make llm                   # data/books.json → data/llm_cache.json (legacy, skips if unchanged)
 make llm-force             # always regenerate LLM outputs (legacy)
 make build                 # parse + llm (legacy pipeline)
+./.venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --provider gemini
+                          # refresh only the Gemini recommendation column
+./.venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --provider gemini --with-taste-profile
+                          # refresh Gemini plus the Anthropic taste profile
 ```
 
 ## Deploy
@@ -189,6 +193,8 @@ The app auto-detects: if `DB_PATH` is set and the file exists, it uses SQLite. O
 Anthropic powers the taste profile and one recommendation column. OpenAI and Gemini power the other two recommendation columns. If one provider fails, the others still get cached and displayed.
 
 If `LLM_DRY_RUN=true`, the generator writes placeholder content marked with `[DRY RUN]` without making live API calls.
+
+You can also do partial recommendation refreshes with `scripts/generate_llm.py --provider ...` when only one model needs a rerun. Unselected recommendation columns stay cached as-is.
 
 ## Staging
 
