@@ -73,6 +73,10 @@ def default_llm_cache() -> dict[str, Any]:
         "dry_run": False,
         "prompt_hash": "",
         "partial_refresh": False,
+        "debug": {
+            "taste_profile": {},
+            "recommendations": {},
+        },
         "taste_profile": {},
         "recommendations": {
             "opus": {"model": None},
@@ -326,6 +330,10 @@ class BookshelfDB:
     def llm_cache(self) -> dict[str, Any]:
         """Reconstruct the old llm_cache.json structure from DB rows."""
         metadata = self._get_llm_cache_value("metadata") or {}
+        debug = self._get_llm_cache_value("debug") or {
+            "taste_profile": {},
+            "recommendations": {},
+        }
         taste_profile = self._get_llm_cache_value("taste_profile") or {}
         recommendations = self._get_llm_cache_value("recommendations") or {
             "opus": {"model": None},
@@ -339,6 +347,7 @@ class BookshelfDB:
             "dry_run": metadata.get("dry_run", False),
             "prompt_hash": metadata.get("prompt_hash", ""),
             "partial_refresh": metadata.get("partial_refresh", False),
+            "debug": debug,
             "taste_profile": taste_profile,
             "recommendations": recommendations,
         }

@@ -176,6 +176,129 @@ class GenerateLlmTests(unittest.TestCase):
         self.assertEqual(payload["taste_profile"]["summary"], "Sharp.")
         self.assertFalse(payload["dry_run"])
 
+    def test_call_gemini_json_uses_structured_output_schema(self):
+        captured = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "usageMetadata": {
+                        "promptTokenCount": 123,
+                        "candidatesTokenCount": 45,
+                        "totalTokenCount": 168,
+                    },
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": json_dump(
+                                            {
+                                                "reasoning": "Pattern-driven.",
+                                                "books": [
+                                                    {
+                                                        "title": "Rec",
+                                                        "author": "Author",
+                                                        "reason": "Specific.",
+                                                        "confidence": "high",
+                                                        "from_to_read": False,
+                                                    }
+                                                ],
+                                            }
+                                        )
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+
+        class FakeClient:
+            async def post(self, url, headers=None, json=None):
+                captured["url"] = url
+                captured["headers"] = headers
+                captured["json"] = json
+                return FakeResponse()
+
+        payload, debug_info = asyncio.run(
+            generate_llm.call_gemini_json(FakeClient(), "test-key", "prompt", 2600)
+        )
+
+        self.assertEqual(payload["books"][0]["title"], "Rec")
+        self.assertEqual(debug_info["model"], generate_llm.GEMINI_MODEL)
+        self.assertEqual(debug_info["usage_metadata"]["promptTokenCount"], 123)
+        self.assertIn(":generateContent", captured["url"])
+        generation_config = captured["json"]["generationConfig"]
+        self.assertEqual(generation_config["responseMimeType"], "application/json")
+        self.assertEqual(generation_config["thinkingConfig"]["thinkingLevel"], "medium")
+        self.assertEqual(generation_config["maxOutputTokens"], 2600)
+        self.assertEqual(
+            generation_config["responseJsonSchema"],
+            generate_llm.GEMINI_RECOMMENDATIONS_JSON_SCHEMA,
+        )
+
+    def test_provider_error_records_debug_info(self):
+        books_payload = sample_books_payload()
+        cache_payload = default_llm_cache()
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=False),
+            patch.object(generate_llm.httpx, "Timeout", return_value=None),
+            patch.object(generate_llm.httpx, "AsyncClient", FakeAsyncClient),
+            patch.object(
+                generate_llm,
+                "generate_gemini_recommendations",
+                AsyncMock(
+                    side_effect=generate_llm.ProviderResponseError(
+                        "Gemini recommendations failed: bad json",
+                        debug_info={
+                            "model": "gemini-test",
+                            "raw_text_excerpt": '{"reasoning": "cut off',
+                            "finish_reason": "MAX_TOKENS",
+                            "usage_metadata": {"promptTokenCount": 123638},
+                        },
+                    )
+                ),
+            ),
+        ):
+            payload, skipped = asyncio.run(
+                generate_llm.generate_cache_payload(
+                    books_payload,
+                    cache_payload,
+                    force=False,
+                    selected_providers={"gemini"},
+                    refresh_taste_profile=False,
+                )
+            )
+
+        self.assertFalse(skipped)
+        self.assertIn("error", payload["recommendations"]["gemini"])
+        self.assertEqual(
+            payload["debug"]["recommendations"]["gemini"]["raw_text_excerpt"],
+            '{"reasoning": "cut off',
+        )
+        self.assertEqual(
+            payload["debug"]["recommendations"]["gemini"]["finish_reason"],
+            "MAX_TOKENS",
+        )
+        self.assertEqual(
+            payload["debug"]["recommendations"]["gemini"]["usage_metadata"]["promptTokenCount"],
+            123638,
+        )
+
     def test_partial_provider_refresh_preserves_other_cached_results(self):
         books_payload = sample_books_payload()
         cache_payload = default_llm_cache()
@@ -246,6 +369,63 @@ class GenerateLlmTests(unittest.TestCase):
         self.assertEqual(payload["recommendations"]["opus"]["model"], "existing-claude")
         self.assertEqual(payload["recommendations"]["gpt45"]["model"], "existing-gpt")
         self.assertEqual(payload["recommendations"]["gemini"]["model"], "gemini-test")
+
+    def test_gemini_provider_uses_shared_snapshot(self):
+        books_payload = sample_books_payload()
+        books_payload["books"]["to_read"] = [
+            {"title": "Future A", "author": "Author A"},
+            {"title": "Future B", "author": "Author B"},
+        ]
+        cache_payload = default_llm_cache()
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        gemini_mock = AsyncMock(
+            return_value={
+                "model": "gemini-test",
+                "books": [
+                    {
+                        "title": "Gemini Rec",
+                        "author": "Author 2",
+                        "reason": "Specific 2.",
+                        "confidence": "medium",
+                    }
+                ],
+                "reasoning": "Gemini reasoning",
+            }
+        )
+
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=False),
+            patch.object(generate_llm.httpx, "Timeout", return_value=None),
+            patch.object(generate_llm.httpx, "AsyncClient", FakeAsyncClient),
+            patch.object(generate_llm, "generate_gemini_recommendations", gemini_mock),
+        ):
+            payload, skipped = asyncio.run(
+                generate_llm.generate_cache_payload(
+                    books_payload,
+                    cache_payload,
+                    force=False,
+                    selected_providers={"gemini"},
+                    refresh_taste_profile=False,
+                )
+            )
+
+        self.assertFalse(skipped)
+        self.assertEqual(payload["recommendations"]["gemini"]["model"], "gemini-test")
+        gemini_snapshot = gemini_mock.await_args.args[1]
+        self.assertEqual(
+            gemini_snapshot,
+            generate_llm.build_library_snapshot(books_payload),
+        )
 
     def test_dry_run_skips_live_provider_calls(self):
         books_payload = sample_books_payload()
