@@ -14,7 +14,6 @@ import asyncio
 import hashlib
 import json
 import os
-import random
 import re
 import sys
 from functools import lru_cache
@@ -54,8 +53,6 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 PROMPTS_DIR = ROOT_DIR / "scripts" / "prompts"
 TASTE_PROFILE_PROMPT_FILE = "taste_profile_prompt.txt"
 RECOMMENDATIONS_PROMPT_FILE = "recommendations_prompt.txt"
-MAX_PROMPT_READ_BOOKS = 100
-MAX_PROMPT_TO_READ_BOOKS = 500
 GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "6000"))
 GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "medium").strip().lower() or "medium"
 
@@ -178,40 +175,8 @@ def build_mock_recommendations(model_name: str, prefix: str) -> dict[str, Any]:
         "reasoning": f"[DRY RUN] Placeholder recommendation strategy from {prefix}.",
     }
 
-
-def _read_sort_key(book: dict[str, Any]) -> tuple[int, str]:
-    date_read = str(book.get("date_read") or "").strip()
-    return (0 if date_read else 1, date_read)
-
-
-def _random_sample_books(books: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-    if len(books) <= limit:
-        return list(books)
-    return random.sample(list(books), limit)
-
-
-def build_library_snapshot(
-    books_payload: dict[str, Any], *, include_to_read: bool = True, max_read_books: int = MAX_PROMPT_READ_BOOKS
-) -> dict[str, Any]:
+def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
     books = books_payload.get("books", {})
-    read_books = sorted(
-        books.get("read", []),
-        key=_read_sort_key,
-        reverse=False,
-    )
-    with_date = [book for book in read_books if str(book.get("date_read") or "").strip()]
-    without_date = [book for book in read_books if not str(book.get("date_read") or "").strip()]
-    if max_read_books <= 0:
-        recent_read_books = list(reversed(with_date)) + without_date
-    else:
-        recent_read_books = list(reversed(with_date))[:max_read_books] + without_date[
-            : max(0, max_read_books - min(len(with_date), max_read_books))
-        ]
-    sampled_to_read_books = (
-        _random_sample_books(books.get("to_read", []), MAX_PROMPT_TO_READ_BOOKS)
-        if include_to_read
-        else []
-    )
 
     def _read_entry(book: dict[str, Any]) -> dict[str, Any]:
         entry = {
@@ -229,7 +194,7 @@ def build_library_snapshot(
 
     return {
         "stats": books_payload.get("stats", {}),
-        "read": [_read_entry(book) for book in recent_read_books],
+        "read": [_read_entry(book) for book in books.get("read", [])],
         "currently_reading": [
             {
                 "title": book.get("title"),
@@ -242,7 +207,7 @@ def build_library_snapshot(
                 "title": book.get("title"),
                 "author": book.get("author"),
             }
-            for book in sampled_to_read_books
+            for book in books.get("to_read", [])
         ],
     }
 
