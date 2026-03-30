@@ -14,14 +14,16 @@ import asyncio
 import hashlib
 import json
 import os
+import random
 import re
 import sys
 from functools import lru_cache
 from pathlib import Path
 from string import Template
-from typing import Any
+from typing import Any, Literal
 
 import httpx
+from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -52,12 +54,20 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 PROMPTS_DIR = ROOT_DIR / "scripts" / "prompts"
 TASTE_PROFILE_PROMPT_FILE = "taste_profile_prompt.txt"
 RECOMMENDATIONS_PROMPT_FILE = "recommendations_prompt.txt"
+MAX_PROMPT_READ_BOOKS = 100
+MAX_PROMPT_TO_READ_BOOKS = 500
+GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "6000"))
+GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "medium").strip().lower() or "medium"
 
 load_env_file(ROOT_DIR / ".env")
 
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", OPENAI_MODEL)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", GEMINI_MODEL)
+GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", str(GEMINI_MAX_OUTPUT_TOKENS)))
+GEMINI_THINKING_LEVEL = (
+    os.getenv("GEMINI_THINKING_LEVEL", GEMINI_THINKING_LEVEL).strip().lower() or "medium"
+)
 LLM_DRY_RUN = env_truthy("LLM_DRY_RUN", default=False)
 RECOMMENDATION_PROVIDER_KEYS = ("opus", "gpt45", "gemini")
 PROVIDER_ALIASES = {
@@ -70,6 +80,70 @@ PROVIDER_ALIASES = {
     "gpt45": "gpt45",
     "gemini": "gemini",
 }
+
+
+class GeminiRecommendationBook(BaseModel):
+    title: str = Field(description="Book title.")
+    author: str = Field(description="Book author.")
+    reason: str = Field(description="Why this recommendation fits the reader.")
+    confidence: Literal["high", "medium", "low"] = Field(
+        description="Confidence level for the recommendation."
+    )
+    from_to_read: bool = Field(
+        description="Whether the book is already on the reader's to-read shelf."
+    )
+
+
+class GeminiRecommendationsPayload(BaseModel):
+    reasoning: str = Field(
+        description="A short paragraph explaining the overall recommendation strategy."
+    )
+    books: list[GeminiRecommendationBook] = Field(
+        description="Up to 5 recommended books for this reader."
+    )
+
+
+GEMINI_RECOMMENDATIONS_JSON_SCHEMA = GeminiRecommendationsPayload.model_json_schema()
+
+
+class ProviderResponseError(RuntimeError):
+    def __init__(self, message: str, debug_info: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.debug_info = debug_info or {}
+
+
+def _debug_excerpt(value: str, limit: int = 2000) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... [truncated]"
+
+
+def _debug_payload_excerpt(payload: Any) -> str:
+    try:
+        return _debug_excerpt(json.dumps(payload, ensure_ascii=False))
+    except Exception:  # noqa: BLE001
+        return _debug_excerpt(repr(payload))
+
+
+def _provider_debug_info(
+    model_name: str,
+    response_payload: dict[str, Any],
+    raw_text: str,
+    finish_reason: str | None = None,
+    usage_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    debug = {
+        "model": model_name,
+        "captured_at": utc_now_iso(),
+        "response_excerpt": _debug_payload_excerpt(response_payload),
+        "raw_text_excerpt": _debug_excerpt(raw_text),
+    }
+    if finish_reason:
+        debug["finish_reason"] = finish_reason
+    if usage_metadata:
+        debug["usage_metadata"] = usage_metadata
+    return debug
 
 
 def build_mock_taste_profile() -> dict[str, Any]:
@@ -105,8 +179,39 @@ def build_mock_recommendations(model_name: str, prefix: str) -> dict[str, Any]:
     }
 
 
-def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
+def _read_sort_key(book: dict[str, Any]) -> tuple[int, str]:
+    date_read = str(book.get("date_read") or "").strip()
+    return (0 if date_read else 1, date_read)
+
+
+def _random_sample_books(books: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if len(books) <= limit:
+        return list(books)
+    return random.sample(list(books), limit)
+
+
+def build_library_snapshot(
+    books_payload: dict[str, Any], *, include_to_read: bool = True, max_read_books: int = MAX_PROMPT_READ_BOOKS
+) -> dict[str, Any]:
     books = books_payload.get("books", {})
+    read_books = sorted(
+        books.get("read", []),
+        key=_read_sort_key,
+        reverse=False,
+    )
+    with_date = [book for book in read_books if str(book.get("date_read") or "").strip()]
+    without_date = [book for book in read_books if not str(book.get("date_read") or "").strip()]
+    if max_read_books <= 0:
+        recent_read_books = list(reversed(with_date)) + without_date
+    else:
+        recent_read_books = list(reversed(with_date))[:max_read_books] + without_date[
+            : max(0, max_read_books - min(len(with_date), max_read_books))
+        ]
+    sampled_to_read_books = (
+        _random_sample_books(books.get("to_read", []), MAX_PROMPT_TO_READ_BOOKS)
+        if include_to_read
+        else []
+    )
 
     def _read_entry(book: dict[str, Any]) -> dict[str, Any]:
         entry = {
@@ -124,7 +229,7 @@ def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "stats": books_payload.get("stats", {}),
-        "read": [_read_entry(book) for book in books.get("read", [])],
+        "read": [_read_entry(book) for book in recent_read_books],
         "currently_reading": [
             {
                 "title": book.get("title"),
@@ -137,7 +242,7 @@ def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
                 "title": book.get("title"),
                 "author": book.get("author"),
             }
-            for book in books.get("to_read", [])
+            for book in sampled_to_read_books
         ],
     }
 
@@ -264,7 +369,7 @@ def normalize_recommendations(
 
 async def call_anthropic_json(
     client: httpx.AsyncClient, api_key: str, prompt: str, max_tokens: int
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     response = await client.post(
         ANTHROPIC_API_URL,
         headers={
@@ -287,12 +392,17 @@ async def call_anthropic_json(
         for block in payload.get("content", [])
         if isinstance(block, dict) and block.get("type") == "text"
     ]
-    return extract_json_object("\n".join(text_blocks))
+    raw_text = "\n".join(text_blocks)
+    debug_info = _provider_debug_info(ANTHROPIC_MODEL, payload, raw_text)
+    try:
+        return extract_json_object(raw_text), debug_info
+    except Exception as exc:  # noqa: BLE001
+        raise ProviderResponseError(str(exc), debug_info=debug_info) from exc
 
 
 async def call_openai_json(
     client: httpx.AsyncClient, api_key: str, prompt: str, max_tokens: int
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     response = await client.post(
         OPENAI_API_URL,
         headers={
@@ -318,12 +428,16 @@ async def call_openai_json(
         )
     else:
         text = content or ""
-    return extract_json_object(text)
+    debug_info = _provider_debug_info(OPENAI_MODEL, payload, text)
+    try:
+        return extract_json_object(text), debug_info
+    except Exception as exc:  # noqa: BLE001
+        raise ProviderResponseError(str(exc), debug_info=debug_info) from exc
 
 
 async def call_gemini_json(
     client: httpx.AsyncClient, api_key: str, prompt: str, max_tokens: int
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     response = await client.post(
         f"{GEMINI_API_BASE_URL}/{GEMINI_MODEL}:generateContent",
         headers={
@@ -340,24 +454,54 @@ async def call_gemini_json(
             "generationConfig": {
                 "temperature": 0.6,
                 "maxOutputTokens": max_tokens,
+                "thinkingConfig": {
+                    "thinkingLevel": GEMINI_THINKING_LEVEL,
+                },
                 "responseMimeType": "application/json",
+                "responseJsonSchema": GEMINI_RECOMMENDATIONS_JSON_SCHEMA,
             },
         },
     )
     response.raise_for_status()
     payload = response.json()
     candidates = payload.get("candidates") or []
+    finish_reason = candidates[0].get("finishReason") if candidates else None
+    usage_metadata = payload.get("usageMetadata")
     if not candidates:
-        raise ValueError(f"Gemini returned no candidates: {json.dumps(payload)}")
+        raise ProviderResponseError(
+            f"Gemini returned no candidates: {_debug_payload_excerpt(payload)}",
+            debug_info=_provider_debug_info(
+                GEMINI_MODEL,
+                payload,
+                "",
+                finish_reason=finish_reason,
+                usage_metadata=usage_metadata,
+            ),
+        )
 
     content = candidates[0].get("content") or {}
     parts = content.get("parts") or []
     text = "\n".join(
         part.get("text", "") for part in parts if isinstance(part, dict) and part.get("text")
     )
+    debug_info = _provider_debug_info(
+        GEMINI_MODEL,
+        payload,
+        text,
+        finish_reason=finish_reason,
+        usage_metadata=usage_metadata,
+    )
+    debug_info["thinking_level"] = GEMINI_THINKING_LEVEL
+    debug_info["max_output_tokens"] = max_tokens
     if not text.strip():
-        raise ValueError(f"Gemini returned no text payload: {json.dumps(payload)}")
-    return extract_json_object(text)
+        raise ProviderResponseError(
+            f"Gemini returned no text payload: {_debug_payload_excerpt(payload)}",
+            debug_info=debug_info,
+        )
+    try:
+        return extract_json_object(text), debug_info
+    except Exception as exc:  # noqa: BLE001
+        raise ProviderResponseError(str(exc), debug_info=debug_info) from exc
 
 
 async def with_retry(coro_factory, label: str) -> dict[str, Any]:
@@ -377,17 +521,30 @@ async def with_retry(coro_factory, label: str) -> dict[str, Any]:
                     elif status_code in {500, 502, 503, 504}:
                         await asyncio.sleep(2 * (attempt + 1))
                 continue
+    if isinstance(last_error, ProviderResponseError):
+        raise ProviderResponseError(
+            f"{label} failed: {last_error}",
+            debug_info=last_error.debug_info,
+        ) from last_error
     raise RuntimeError(f"{label} failed: {last_error}") from last_error
 
 
 async def generate_taste_profile(
-    client: httpx.AsyncClient, snapshot: dict[str, Any], api_key: str
+    client: httpx.AsyncClient,
+    snapshot: dict[str, Any],
+    api_key: str,
+    debug_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    raw = await with_retry(
+    raw, response_debug = await with_retry(
         lambda: call_anthropic_json(client, api_key, build_taste_profile_prompt(snapshot), 1800),
         "Taste profile generation",
     )
-    return normalize_taste_profile(raw)
+    if debug_info is not None:
+        debug_info.update(response_debug)
+    try:
+        return normalize_taste_profile(raw)
+    except Exception as exc:  # noqa: BLE001
+        raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
 
 
 async def generate_anthropic_recommendations(
@@ -395,12 +552,18 @@ async def generate_anthropic_recommendations(
     snapshot: dict[str, Any],
     api_key: str,
     existing_books: set[tuple[str, str]],
+    debug_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    raw = await with_retry(
+    raw, response_debug = await with_retry(
         lambda: call_anthropic_json(client, api_key, build_recommendations_prompt(snapshot), 2600),
         "Anthropic recommendations",
     )
-    normalized = normalize_recommendations(raw, existing_books)
+    if debug_info is not None:
+        debug_info.update(response_debug)
+    try:
+        normalized = normalize_recommendations(raw, existing_books)
+    except Exception as exc:  # noqa: BLE001
+        raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
     normalized["model"] = ANTHROPIC_MODEL
     return normalized
 
@@ -410,12 +573,18 @@ async def generate_openai_recommendations(
     snapshot: dict[str, Any],
     api_key: str,
     existing_books: set[tuple[str, str]],
+    debug_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    raw = await with_retry(
+    raw, response_debug = await with_retry(
         lambda: call_openai_json(client, api_key, build_recommendations_prompt(snapshot), 2600),
         "OpenAI recommendations",
     )
-    normalized = normalize_recommendations(raw, existing_books)
+    if debug_info is not None:
+        debug_info.update(response_debug)
+    try:
+        normalized = normalize_recommendations(raw, existing_books)
+    except Exception as exc:  # noqa: BLE001
+        raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
     normalized["model"] = OPENAI_MODEL
     return normalized
 
@@ -425,12 +594,23 @@ async def generate_gemini_recommendations(
     snapshot: dict[str, Any],
     api_key: str,
     existing_books: set[tuple[str, str]],
+    debug_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    raw = await with_retry(
-        lambda: call_gemini_json(client, api_key, build_recommendations_prompt(snapshot), 2600),
+    raw, response_debug = await with_retry(
+        lambda: call_gemini_json(
+            client,
+            api_key,
+            build_recommendations_prompt(snapshot),
+            GEMINI_MAX_OUTPUT_TOKENS,
+        ),
         "Gemini recommendations",
     )
-    normalized = normalize_recommendations(raw, existing_books)
+    if debug_info is not None:
+        debug_info.update(response_debug)
+    try:
+        normalized = normalize_recommendations(raw, existing_books)
+    except Exception as exc:  # noqa: BLE001
+        raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
     normalized["model"] = GEMINI_MODEL
     return normalized
 
@@ -576,32 +756,65 @@ async def generate_cache_payload(
     timeout = httpx.Timeout(REQUEST_TIMEOUT_SECONDS)
     async with httpx.AsyncClient(timeout=timeout) as client:
         if refresh_taste_profile:
+            taste_profile_debug: dict[str, Any] = {"model": ANTHROPIC_MODEL}
             if anthropic_key:
                 try:
-                    result["taste_profile"] = await generate_taste_profile(client, snapshot, anthropic_key)
+                    result["taste_profile"] = await generate_taste_profile(
+                        client,
+                        snapshot,
+                        anthropic_key,
+                        debug_info=taste_profile_debug,
+                    )
                 except Exception as exc:  # noqa: BLE001
                     result["taste_profile"] = {"error": str(exc), "model": ANTHROPIC_MODEL}
+                    taste_profile_debug["error"] = str(exc)
+                    if isinstance(exc, ProviderResponseError):
+                        taste_profile_debug.update(exc.debug_info)
             else:
                 result["taste_profile"] = {
                     "error": "ANTHROPIC_API_KEY is not set.",
                     "model": ANTHROPIC_MODEL,
                 }
+                taste_profile_debug["error"] = "ANTHROPIC_API_KEY is not set."
+            result["debug"]["taste_profile"] = taste_profile_debug
 
         recommendation_tasks: list[tuple[str, asyncio.Future | Any | None, str]] = []
+        recommendation_debug: dict[str, dict[str, Any]] = {
+            provider: {"model": runtime_models[provider]}
+            for provider in target_providers
+        }
         provider_factories = {
             "opus": (
                 anthropic_key,
-                lambda: generate_anthropic_recommendations(client, snapshot, anthropic_key, all_books),
+                lambda: generate_anthropic_recommendations(
+                    client,
+                    snapshot,
+                    anthropic_key,
+                    all_books,
+                    debug_info=recommendation_debug["opus"],
+                ),
                 "ANTHROPIC_API_KEY is not set.",
             ),
             "gpt45": (
                 openai_key,
-                lambda: generate_openai_recommendations(client, snapshot, openai_key, all_books),
+                lambda: generate_openai_recommendations(
+                    client,
+                    snapshot,
+                    openai_key,
+                    all_books,
+                    debug_info=recommendation_debug["gpt45"],
+                ),
                 "OPENAI_API_KEY is not set.",
             ),
             "gemini": (
                 gemini_key,
-                lambda: generate_gemini_recommendations(client, snapshot, gemini_key, all_books),
+                lambda: generate_gemini_recommendations(
+                    client,
+                    snapshot,
+                    gemini_key,
+                    all_books,
+                    debug_info=recommendation_debug["gemini"],
+                ),
                 "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",
             ),
         }
@@ -615,6 +828,7 @@ async def generate_cache_payload(
                     "model": runtime_models[provider],
                     "error": missing_message,
                 }
+                recommendation_debug[provider]["error"] = missing_message
                 recommendation_tasks.append((provider, None, runtime_models[provider]))
 
         active_tasks = [task for _, task, _ in recommendation_tasks if task is not None]
@@ -631,8 +845,12 @@ async def generate_cache_payload(
                     "model": model_name,
                     "error": str(response),
                 }
+                recommendation_debug[provider_key]["error"] = str(response)
+                if isinstance(response, ProviderResponseError):
+                    recommendation_debug[provider_key].update(response.debug_info)
             else:
                 result["recommendations"][provider_key] = response
+            result["debug"]["recommendations"][provider_key] = recommendation_debug[provider_key]
 
     return result, False
 
@@ -648,6 +866,7 @@ def _save_llm_cache_to_db(conn: Any, payload: dict[str, Any]) -> None:
         "prompt_hash": payload.get("prompt_hash", ""),
         "partial_refresh": payload.get("partial_refresh", False),
     })
+    set_llm_cache_value(conn, "debug", payload.get("debug", {}))
     set_llm_cache_value(conn, "taste_profile", payload.get("taste_profile", {}))
     set_llm_cache_value(conn, "recommendations", payload.get("recommendations", {}))
 
