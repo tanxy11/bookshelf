@@ -611,6 +611,7 @@ class ApiSqliteTests(unittest.TestCase):
         data = resp.json()
         self.assertEqual(data["title"], "New Book")
         self.assertEqual(data["author"], "New Author")
+        self.assertEqual(data["shelves"], ["to-read"])
 
     def test_create_book_requires_auth(self):
         resp = self.client.post(
@@ -643,6 +644,22 @@ class ApiSqliteTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["title"], "New Title")
+
+    def test_update_book_normalizes_shelves(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Tagged Book", "author": "Author", "exclusive_shelf": "to_read"},
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = resp.json()["id"]
+
+        resp = self.client.put(
+            f"/api/books/{book_id}",
+            json={"shelves": ["to_read", "favorite", "favorite"]},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["shelves"], ["to-read", "favorite"])
 
     def test_update_book_not_found(self):
         resp = self.client.put(

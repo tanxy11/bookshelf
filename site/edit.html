@@ -47,6 +47,43 @@
     .message { padding: 12px; border-radius: 10px; font-size: .85rem; }
     .message.success { background: var(--olive-soft); color: var(--olive); border: 1px solid rgba(94,105,84,0.2); }
     .message.error { background: var(--danger-soft); color: var(--danger); border: 1px solid rgba(140,93,88,0.2); }
+    .tag-picker { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.58); }
+    .tag-selected, .tag-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tag-placeholder, .tag-help { font-size: .78rem; color: var(--muted); }
+    .tag-input-row { display: flex; gap: 8px; }
+    .tag-input-row input { flex: 1; }
+    .tag-chip, .tag-suggestion {
+      display: inline-flex; align-items: center; gap: 6px; border-radius: 999px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.88);
+      padding: 6px 10px; font-size: .78rem; line-height: 1; color: var(--text);
+    }
+    .tag-chip button, .tag-suggestion {
+      font: inherit; cursor: pointer;
+    }
+    .tag-chip button {
+      border: none; background: none; color: var(--muted); padding: 0; line-height: 1;
+    }
+    .tag-chip button:hover { color: var(--accent-deep); }
+    .tag-suggestion {
+      background: var(--accent-soft);
+      border-color: rgba(122,92,62,0.22);
+    }
+    .tag-suggestion:hover {
+      background: rgba(122,92,62,0.18);
+      border-color: var(--border-strong);
+    }
+    .tag-add-btn {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.85);
+      color: var(--accent-deep);
+      font: inherit;
+      font-size: .82rem;
+      font-weight: 600;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+    .tag-add-btn:hover { background: var(--accent-soft); }
     .hidden { display: none; }
     .loading { text-align: center; padding: 48px; color: var(--muted); }
   </style>
@@ -89,6 +126,22 @@
           <option value="4">4 stars</option>
           <option value="5">5 stars</option>
         </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="tag-input">Tags</label>
+      <div class="tag-picker">
+        <div class="tag-selected" id="selected-tags">
+          <span class="tag-placeholder">No custom tags yet.</span>
+        </div>
+        <div class="tag-input-row">
+          <input type="text" id="tag-input" list="tag-options" placeholder="Type a tag and press Enter">
+          <button type="button" class="tag-add-btn" id="add-tag-btn">Add</button>
+        </div>
+        <datalist id="tag-options"></datalist>
+        <div class="tag-help">Pick from existing tags below or create a new one. Shelf tags are added automatically.</div>
+        <div class="tag-suggestions" id="tag-suggestions"></div>
       </div>
     </div>
 
@@ -145,11 +198,101 @@ const AUTH_KEY = 'bookshelf_auth_token';
 const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 const localApiPort = location.port === '8010' ? '8011' : '8001';
 const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
+const RESERVED_SHELF_TAGS = new Set(['read', 'currently-reading', 'to-read']);
+const tagState = { selected: [], suggestions: [] };
 
 const params = new URLSearchParams(location.search);
 const bookId = params.get('id');
 
 function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function normalizeShelfTag(value) {
+  if (value === 'to_read') return 'to-read';
+  if (value === 'currently_reading') return 'currently-reading';
+  return value;
+}
+function normalizeTag(value) {
+  const trimmed = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!trimmed) return '';
+  return normalizeShelfTag(trimmed);
+}
+function tagKey(value) { return normalizeTag(value).toLocaleLowerCase(); }
+function isReservedShelfTag(value) { return RESERVED_SHELF_TAGS.has(normalizeTag(value)); }
+function dedupeTags(tags, excludeReserved = false) {
+  const seen = new Set();
+  const normalized = [];
+  tags.forEach(raw => {
+    const tag = normalizeTag(raw);
+    if (!tag) return;
+    if (excludeReserved && isReservedShelfTag(tag)) return;
+    const key = tagKey(tag);
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push(tag);
+  });
+  return normalized;
+}
+function buildSubmittedShelves(exclusiveShelf) {
+  return dedupeTags([normalizeShelfTag(exclusiveShelf), ...tagState.selected]);
+}
+function renderTagOptions() {
+  document.getElementById('tag-options').innerHTML = tagState.suggestions
+    .map(tag => `<option value="${escHtml(tag)}"></option>`)
+    .join('');
+}
+function renderSelectedTags() {
+  const el = document.getElementById('selected-tags');
+  if (!tagState.selected.length) {
+    el.innerHTML = '<span class="tag-placeholder">No custom tags yet.</span>';
+    return;
+  }
+  el.innerHTML = tagState.selected.map(tag => `
+    <span class="tag-chip">
+      <span>${escHtml(tag)}</span>
+      <button type="button" data-remove-tag="${escHtml(tag)}" aria-label="Remove ${escHtml(tag)}">&times;</button>
+    </span>
+  `).join('');
+}
+function renderTagSuggestions() {
+  const selected = new Set(tagState.selected.map(tagKey));
+  const suggestions = tagState.suggestions.filter(tag => !selected.has(tagKey(tag))).slice(0, 40);
+  document.getElementById('tag-suggestions').innerHTML = suggestions.map(tag => `
+    <button type="button" class="tag-suggestion" data-add-tag="${escHtml(tag)}">${escHtml(tag)}</button>
+  `).join('');
+}
+function setSelectedTags(tags) {
+  tagState.selected = dedupeTags(tags, true);
+  renderSelectedTags();
+  renderTagSuggestions();
+}
+function addTag(rawTag) {
+  const tag = normalizeTag(rawTag);
+  if (!tag || isReservedShelfTag(tag)) return false;
+  tagState.selected = dedupeTags([...tagState.selected, tag], true);
+  renderSelectedTags();
+  renderTagSuggestions();
+  return true;
+}
+function removeTag(rawTag) {
+  const key = tagKey(rawTag);
+  tagState.selected = tagState.selected.filter(tag => tagKey(tag) !== key);
+  renderSelectedTags();
+  renderTagSuggestions();
+}
+function extractTagSuggestions(books) {
+  const counts = new Map();
+  books.forEach(book => (book.shelves || []).forEach(rawTag => {
+    const tag = normalizeTag(rawTag);
+    if (!tag || isReservedShelfTag(tag)) return;
+    const key = tagKey(tag);
+    const entry = counts.get(key) || { tag, count: 0 };
+    entry.count += 1;
+    counts.set(key, entry);
+  }));
+  return Array.from(counts.values())
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+    .map(entry => entry.tag);
+}
 
 function showMessage(text, type) {
   const el = document.getElementById('message');
@@ -171,6 +314,7 @@ function populateForm(book) {
   document.getElementById('my_review').value = book.my_review || '';
   document.getElementById('notes').value = book.notes || '';
   document.getElementById('google_books_id').value = book.google_books_id || '';
+  setSelectedTags(book.shelves || []);
 }
 
 async function loadBook() {
@@ -186,6 +330,8 @@ async function loadBook() {
       ...(data.books.currently_reading || []),
       ...(data.books.to_read || []),
     ];
+    tagState.suggestions = extractTagSuggestions(allBooks);
+    renderTagOptions();
     const book = allBooks.find(b => String(b.id) === bookId);
     if (!book) {
       document.getElementById('loading').textContent = 'Book not found.';
@@ -214,6 +360,7 @@ document.getElementById('edit-form').addEventListener('submit', async e => {
     author: document.getElementById('author').value.trim(),
     exclusive_shelf: document.getElementById('exclusive_shelf').value,
     my_rating: parseInt(document.getElementById('my_rating').value) || 0,
+    shelves: buildSubmittedShelves(document.getElementById('exclusive_shelf').value),
   };
 
   const isbn13 = document.getElementById('isbn13').value.trim();
@@ -251,6 +398,33 @@ document.getElementById('edit-form').addEventListener('submit', async e => {
     btn.textContent = 'Save Changes';
   }
 });
+
+document.getElementById('add-tag-btn').addEventListener('click', () => {
+  const input = document.getElementById('tag-input');
+  if (addTag(input.value)) input.value = '';
+  input.focus();
+});
+
+document.getElementById('tag-input').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ',') return;
+  e.preventDefault();
+  const input = document.getElementById('tag-input');
+  if (addTag(input.value)) input.value = '';
+});
+
+document.getElementById('selected-tags').addEventListener('click', e => {
+  const btn = e.target.closest('[data-remove-tag]');
+  if (!btn) return;
+  removeTag(btn.dataset.removeTag);
+});
+
+document.getElementById('tag-suggestions').addEventListener('click', e => {
+  const btn = e.target.closest('[data-add-tag]');
+  if (!btn) return;
+  addTag(btn.dataset.addTag);
+});
+
+setSelectedTags([]);
 
 // Delete
 document.getElementById('delete-btn').addEventListener('click', async () => {

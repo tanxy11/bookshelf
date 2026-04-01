@@ -63,6 +63,32 @@ def _auth(request: Request) -> None:
     verify_auth(request, conn)
 
 
+def _normalize_shelf_tag(value: str) -> str:
+    shelf = (value or "").strip()
+    return {
+        "to_read": "to-read",
+        "currently_reading": "currently-reading",
+    }.get(shelf, shelf)
+
+
+def _normalize_shelves(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in value:
+        tag = _normalize_shelf_tag(str(raw or "").strip())
+        if not tag:
+            continue
+        key = tag.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(tag)
+    return normalized
+
+
 # ── LLM regeneration state ──────────────────────────────────────────────────
 _llm_lock = asyncio.Lock()
 _llm_status: dict = {"status": "idle"}
@@ -158,6 +184,7 @@ async def create_book(request: Request) -> dict:
     from db import insert_book
 
     shelf = body.get("exclusive_shelf", "to_read")
+    shelves = _normalize_shelves(body.get("shelves"))
     book_data = {
         "title": title,
         "author": author,
@@ -167,7 +194,7 @@ async def create_book(request: Request) -> dict:
         "pages": body.get("pages"),
         "date_read": body.get("date_read") or None,
         "date_added": body.get("date_added") or utc_now_iso()[:10],
-        "shelves": body.get("shelves", [shelf]),
+        "shelves": shelves or [_normalize_shelf_tag(shelf)],
         "exclusive_shelf": shelf,
         "review": body.get("my_review") or body.get("review") or None,
         "notes": body.get("notes") or None,
@@ -199,6 +226,9 @@ async def update_book_endpoint(book_id: int, request: Request) -> dict:
     body = await request.json()
     if not body:
         raise HTTPException(status_code=422, detail="No fields to update.")
+
+    if "shelves" in body:
+        body["shelves"] = _normalize_shelves(body.get("shelves"))
 
     if not update_book(store.conn(), book_id, body):
         raise HTTPException(status_code=404, detail="Book not found.")

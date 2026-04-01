@@ -1496,7 +1496,7 @@ function renderReadGrid() {
 
 function buildShelfTags(books) {
   const counts = {};
-  const excluded = new Set(['read', 'currently-reading', 'to-read']);
+  const excluded = new Set(['read', 'currently-reading', 'to-read', 'currently_reading', 'to_read']);
   books.forEach(book => (book.shelves || []).forEach(shelf => {
     if (excluded.has(shelf)) return;
     counts[shelf] = (counts[shelf] || 0) + 1;
