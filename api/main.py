@@ -150,6 +150,19 @@ async def get_books() -> dict:
             raise HTTPException(status_code=503, detail="No books found in database.")
         if not BOOKS_DATA_FILE.exists():
             raise HTTPException(status_code=503, detail="books.json not found. Run `make parse` first.")
+
+    # Enrich with note_count per book
+    if USE_SQLITE:
+        rows = store.conn().execute(
+            "SELECT source_id, COUNT(*) as cnt FROM notes "
+            "WHERE source_type = 'book' GROUP BY source_id"
+        ).fetchall()
+        counts = {row["source_id"]: row["cnt"] for row in rows}
+        for shelf in books_payload.get("books", {}).values():
+            if isinstance(shelf, list):
+                for book in shelf:
+                    book["note_count"] = counts.get(book.get("id", 0), 0)
+
     return books_payload
 
 

@@ -1494,6 +1494,7 @@ function buildCardDataAttrs(book, context) {
     'data-shelves': (book.shelves || []).slice(0, 6).join('|'),
     'data-review': (book.my_review || '').trim(),
     'data-notes': (book.notes || '').trim(),
+    'data-note-count': book.note_count || '',
     'data-cover-url': book.cover_url || '',
   };
 
@@ -1548,7 +1549,7 @@ function buildHovercardContent(card) {
     ${shelvesHtml}
     ${reviewHtml}
     ${notesHtml}
-    ${card.dataset.id ? `<a href="/book?id=${escHtml(card.dataset.id)}" class="hovercard-link" onclick="event.stopPropagation()">&rarr; View full page &amp; notes</a>` : ''}
+    ${card.dataset.id ? `<a href="book.html?id=${escHtml(card.dataset.id)}" class="hovercard-link" onclick="event.stopPropagation()">&rarr; View full page &amp; ${card.dataset.noteCount ? card.dataset.noteCount + ' notes' : 'notes'}</a>` : ''}
   `;
 }
 
@@ -1626,9 +1627,18 @@ document.addEventListener('focusout', e => {
 });
 
 document.addEventListener('click', e => {
+  // Ignore clicks on edit icons and other links inside cards
+  if (e.target.closest('.edit-icon')) return;
+
   const card = e.target.closest('.book-card');
   if (!card) {
     hideHovercard();
+    return;
+  }
+
+  // Click navigates to book detail page
+  if (card.dataset.id) {
+    window.location.href = `book.html?id=${card.dataset.id}`;
     return;
   }
 
