@@ -366,7 +366,7 @@ function renderNoteHtml(note) {
     const coverImg = cb.cover_url
       ? `<img src="${escHtml(cb.cover_url)}" alt="${escHtml(cb.title)}">` : '';
     connectedHtml = `
-      <a class="connected-card" href="/book?id=${cb.id}">
+      <a class="connected-card" href="book.html?id=${cb.id}">
         <div class="connected-cover">${coverImg}</div>
         <div>
           <div class="connected-title">${escHtml(cb.title)}</div>

@@ -91,6 +91,7 @@
 <body>
 <div class="container">
   <a class="back" href="index.html">&larr; Back to bookshelf</a>
+  <a class="back" id="book-page-link" style="display:none;margin-left:12px">&rarr; View this book's page (with notes)</a>
   <h1>Edit Book</h1>
 
   <div class="loading" id="loading">Loading book…</div>
@@ -340,6 +341,9 @@ async function loadBook() {
     populateForm(book);
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('edit-form').classList.remove('hidden');
+    const bookPageLink = document.getElementById('book-page-link');
+    bookPageLink.href = `book.html?id=${bookId}`;
+    bookPageLink.style.display = '';
   } catch (err) {
     document.getElementById('loading').textContent = `Failed to load: ${err.message}`;
   }
