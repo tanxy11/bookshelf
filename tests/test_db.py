@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import db as db_module
 from bookshelf_data import (
     BookshelfDB,
     BookshelfStore,
@@ -27,6 +28,7 @@ from db import (
     get_llm_cache_value,
     get_schema_version,
     insert_book,
+    list_activity_rows,
     run_migrations,
     set_llm_cache_value,
     update_book,
@@ -256,20 +258,74 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("books", tables)
         self.assertIn("llm_cache", tables)
         self.assertIn("auth_tokens", tables)
+        self.assertIn("notes", tables)
+        self.assertIn("activity_log", tables)
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_1(self):
+    def test_schema_version_is_2(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 1)
+        self.assertEqual(get_schema_version(conn), 2)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 1)
+        self.assertEqual(get_schema_version(conn), 2)
+        conn.close()
+
+    def test_existing_notes_table_upgrades_cleanly(self):
+        conn = get_connection(self.db_path)
+        db_module._migration_v1(conn)
+        conn.executescript(db_module._NOTES_SCHEMA)
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            )"""
+        )
+        conn.execute("INSERT INTO schema_version (version) VALUES (1)")
+        conn.commit()
+
+        applied = run_migrations(conn)
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        self.assertEqual(applied, 1)
+        self.assertEqual(get_schema_version(conn), 2)
+        self.assertIn("notes", tables)
+        self.assertIn("activity_log", tables)
+        conn.close()
+
+    def test_insert_and_list_activity_rows(self):
+        conn = get_connection(self.db_path)
+        run_migrations(conn)
+        book_id = insert_book(conn, {
+            "title": "Test Book",
+            "author": "Test Author",
+            "date_added": "2026-01-01",
+            "exclusive_shelf": "to_read",
+        })
+        db_module.insert_activity(
+            conn,
+            event_type="book_added_to_to_read",
+            book_id=book_id,
+            book_title="Test Book",
+            book_author="Test Author",
+        )
+        conn.commit()
+
+        rows = list_activity_rows(conn, limit=10, offset=0)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["event_type"], "book_added_to_to_read")
+        self.assertEqual(rows[0]["book_title"], "Test Book")
+        self.assertEqual(rows[0]["book_exists"], 1)
         conn.close()
 
     def test_insert_and_retrieve_book(self):
@@ -581,6 +637,13 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertTrue(data["has_taste_profile"])
         self.assertEqual(data["data_backend"], "sqlite")
 
+    def test_activity_endpoint_empty_initially(self):
+        resp = self.client.get("/api/activity")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["items"], [])
+        self.assertFalse(payload["pagination"]["has_more"])
+
     def test_llm_status_endpoint(self):
         resp = self.client.get("/api/llm-status")
         self.assertEqual(resp.status_code, 200)
@@ -613,6 +676,27 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(data["author"], "New Author")
         self.assertEqual(data["shelves"], ["to-read"])
 
+    def test_create_book_logs_activity_for_each_initial_shelf(self):
+        cases = [
+            ("Shelf One", "to_read", "book_added_to_to_read", "Added Shelf One to to-read"),
+            ("Shelf Two", "currently_reading", "started_reading", "Started Shelf Two"),
+            ("Shelf Three", "read", "finished_reading", "Finished Shelf Three"),
+        ]
+
+        for title, shelf, _, _ in cases:
+            resp = self.client.post(
+                "/api/books",
+                json={"title": title, "author": "Author", "exclusive_shelf": shelf},
+                headers=TEST_AUTH_HEADER,
+            )
+            self.assertEqual(resp.status_code, 201)
+
+        activity = self.client.get("/api/activity?limit=10").json()["items"]
+        self.assertEqual(len(activity), 3)
+        for item, (_, _, event_type, summary) in zip(activity, reversed(cases)):
+            self.assertEqual(item["event_type"], event_type)
+            self.assertEqual(item["summary"], summary)
+
     def test_create_book_requires_auth(self):
         resp = self.client.post(
             "/api/books",
@@ -627,6 +711,7 @@ class ApiSqliteTests(unittest.TestCase):
             headers=TEST_AUTH_HEADER,
         )
         self.assertEqual(resp.status_code, 422)
+        self.assertEqual(self.client.get("/api/activity").json()["items"], [])
 
     def test_update_book(self):
         # Create a book first
@@ -644,6 +729,51 @@ class ApiSqliteTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["title"], "New Title")
+
+    def test_update_book_logs_when_entering_currently_reading_or_read(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Transition Book", "author": "Author", "exclusive_shelf": "to_read"},
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = resp.json()["id"]
+
+        self.client.put(
+            f"/api/books/{book_id}",
+            json={"exclusive_shelf": "currently_reading"},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.client.put(
+            f"/api/books/{book_id}",
+            json={"exclusive_shelf": "read"},
+            headers=TEST_AUTH_HEADER,
+        )
+
+        activity = self.client.get("/api/activity?limit=10").json()["items"]
+        self.assertEqual([item["event_type"] for item in activity], [
+            "finished_reading",
+            "started_reading",
+            "book_added_to_to_read",
+        ])
+
+    def test_metadata_only_book_edit_creates_no_activity(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Quiet Book", "author": "Author", "exclusive_shelf": "to_read"},
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = resp.json()["id"]
+
+        resp = self.client.put(
+            f"/api/books/{book_id}",
+            json={"title": "Quiet Book Revised"},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        activity = self.client.get("/api/activity?limit=10").json()["items"]
+        self.assertEqual(len(activity), 1)
+        self.assertEqual(activity[0]["event_type"], "book_added_to_to_read")
 
     def test_update_book_normalizes_shelves(self):
         resp = self.client.post(
@@ -691,6 +821,40 @@ class ApiSqliteTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 404)
 
+    def test_activity_pagination(self):
+        titles = ["First", "Second", "Third", "Fourth"]
+        for title in titles:
+            resp = self.client.post(
+                "/api/books",
+                json={"title": title, "author": "Author", "exclusive_shelf": "to_read"},
+                headers=TEST_AUTH_HEADER,
+            )
+            self.assertEqual(resp.status_code, 201)
+
+        first_page = self.client.get("/api/activity?limit=3&offset=0").json()
+        second_page = self.client.get("/api/activity?limit=3&offset=3").json()
+
+        self.assertEqual(len(first_page["items"]), 3)
+        self.assertTrue(first_page["pagination"]["has_more"])
+        self.assertEqual(first_page["pagination"]["next_offset"], 3)
+        self.assertEqual(first_page["items"][0]["summary"], "Added Fourth to to-read")
+        self.assertEqual(len(second_page["items"]), 1)
+        self.assertFalse(second_page["pagination"]["has_more"])
+        self.assertEqual(second_page["items"][0]["summary"], "Added First to to-read")
+
+    def test_deleted_book_activity_has_null_href(self):
+        create = self.client.post(
+            "/api/books",
+            json={"title": "Transient Book", "author": "Author", "exclusive_shelf": "to_read"},
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = create.json()["id"]
+        self.client.delete(f"/api/books/{book_id}", headers=TEST_AUTH_HEADER)
+
+        activity = self.client.get("/api/activity?limit=10").json()["items"]
+        self.assertEqual(activity[0]["summary"], "Added Transient Book to to-read")
+        self.assertIsNone(activity[0]["book"]["href"])
+
     def test_lookup_endpoint(self):
         mock_results = [{"title": "Dune", "author": "Frank Herbert", "google_books_id": "abc"}]
         with patch("api.google_books.search_books", new_callable=AsyncMock, return_value=mock_results):
@@ -718,6 +882,53 @@ class ApiSqliteTests(unittest.TestCase):
             headers={"Authorization": "Bearer bad-token"},
         )
         self.assertEqual(resp.status_code, 401)
+
+    def test_create_note_logs_note_added(self):
+        resp = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "quote", "content": "The sleeper must awaken."},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        activity = self.client.get("/api/activity?limit=10").json()["items"]
+        self.assertEqual(len(activity), 1)
+        self.assertEqual(activity[0]["event_type"], "note_added")
+        self.assertEqual(activity[0]["note_type"], "quote")
+        self.assertEqual(activity[0]["summary"], "Added a quote from Dune")
+
+    def test_note_update_and_delete_do_not_log_activity(self):
+        create = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "First note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        note_id = create.json()["id"]
+
+        update = self.client.put(
+            f"/api/books/1/notes/{note_id}",
+            json={"note_type": "thought", "content": "Updated note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        delete = self.client.delete(
+            f"/api/books/1/notes/{note_id}",
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(update.status_code, 200)
+        self.assertEqual(delete.status_code, 200)
+        activity = self.client.get("/api/activity?limit=10").json()["items"]
+        self.assertEqual(len(activity), 1)
+        self.assertEqual(activity[0]["event_type"], "note_added")
+
+    def test_failed_note_creation_does_not_log_activity(self):
+        resp = self.client.post(
+            "/api/books/99999/notes",
+            json={"note_type": "thought", "content": "Ghost note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(self.client.get("/api/activity").json()["items"], [])
 
 
 # ── Tests: Migration script ───────────────────────────────────────────────────

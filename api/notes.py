@@ -7,6 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from db import insert_activity
+
 router = APIRouter(prefix="/api/books/{book_id}/notes")
 
 VALID_NOTE_TYPES = ("thought", "quote", "connection", "disagreement", "question")
@@ -119,29 +121,45 @@ async def create_note(book_id: int, request: Request) -> dict:
     conn = store.conn()
 
     # Verify book exists
-    book = conn.execute("SELECT id FROM books WHERE id = ?", (book_id,)).fetchone()
+    book = conn.execute(
+        "SELECT id, title, author FROM books WHERE id = ?",
+        (book_id,),
+    ).fetchone()
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found.")
 
     body = await request.json()
     fields = _validate_note_body(body)
 
-    cursor = conn.execute(
-        """INSERT INTO notes (source_type, source_id, note_type, content,
-           page_or_location, connected_source_type, connected_source_id, tags)
-           VALUES ('book', ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            book_id,
-            fields["note_type"],
-            fields["content"],
-            fields["page_or_location"],
-            fields["connected_source_type"],
-            fields["connected_source_id"],
-            fields["tags"],
-        ),
-    )
-    conn.commit()
-    return {"id": cursor.lastrowid, "status": "created"}
+    try:
+        cursor = conn.execute(
+            """INSERT INTO notes (source_type, source_id, note_type, content,
+               page_or_location, connected_source_type, connected_source_id, tags)
+               VALUES ('book', ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                book_id,
+                fields["note_type"],
+                fields["content"],
+                fields["page_or_location"],
+                fields["connected_source_type"],
+                fields["connected_source_id"],
+                fields["tags"],
+            ),
+        )
+        insert_activity(
+            conn,
+            event_type="note_added",
+            book_id=book["id"],
+            note_id=cursor.lastrowid,
+            book_title=book["title"],
+            book_author=book["author"],
+            note_type=fields["note_type"],
+        )
+        conn.commit()
+        return {"id": cursor.lastrowid, "status": "created"}
+    except Exception:
+        conn.rollback()
+        raise
 
 
 @router.put("/{note_id}")
@@ -164,23 +182,27 @@ async def update_note(book_id: int, note_id: int, request: Request) -> dict:
     body = await request.json()
     fields = _validate_note_body(body)
 
-    conn.execute(
-        """UPDATE notes SET note_type = ?, content = ?, page_or_location = ?,
-           connected_source_type = ?, connected_source_id = ?, tags = ?,
-           updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-           WHERE id = ?""",
-        (
-            fields["note_type"],
-            fields["content"],
-            fields["page_or_location"],
-            fields["connected_source_type"],
-            fields["connected_source_id"],
-            fields["tags"],
-            note_id,
-        ),
-    )
-    conn.commit()
-    return {"id": note_id, "status": "updated"}
+    try:
+        conn.execute(
+            """UPDATE notes SET note_type = ?, content = ?, page_or_location = ?,
+               connected_source_type = ?, connected_source_id = ?, tags = ?,
+               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+               WHERE id = ?""",
+            (
+                fields["note_type"],
+                fields["content"],
+                fields["page_or_location"],
+                fields["connected_source_type"],
+                fields["connected_source_id"],
+                fields["tags"],
+                note_id,
+            ),
+        )
+        conn.commit()
+        return {"id": note_id, "status": "updated"}
+    except Exception:
+        conn.rollback()
+        raise
 
 
 @router.delete("/{note_id}")
@@ -200,6 +222,10 @@ async def delete_note(book_id: int, note_id: int, request: Request) -> dict:
     if existing is None:
         raise HTTPException(status_code=404, detail="Note not found.")
 
-    conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-    conn.commit()
-    return {"id": note_id, "status": "deleted"}
+    try:
+        conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+        conn.commit()
+        return {"id": note_id, "status": "deleted"}
+    except Exception:
+        conn.rollback()
+        raise

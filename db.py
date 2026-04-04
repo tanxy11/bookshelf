@@ -65,10 +65,59 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA_V1)
 
 
+_NOTES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_type TEXT NOT NULL DEFAULT 'book'
+        CHECK (source_type IN ('book', 'article', 'movie', 'blog', 'report', 'other')),
+    source_id INTEGER NOT NULL,
+    note_type TEXT NOT NULL DEFAULT 'thought'
+        CHECK (note_type IN ('thought', 'quote', 'connection', 'disagreement', 'question')),
+    content TEXT NOT NULL,
+    page_or_location TEXT,
+    connected_source_type TEXT,
+    connected_source_id INTEGER,
+    tags TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_source ON notes(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_notes_type ON notes(note_type);
+CREATE INDEX IF NOT EXISTS idx_notes_connected ON notes(connected_source_type, connected_source_id);
+"""
+
+
+_ACTIVITY_LOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL
+        CHECK (event_type IN ('book_added_to_to_read', 'started_reading', 'finished_reading', 'note_added')),
+    book_id INTEGER NOT NULL,
+    note_id INTEGER,
+    book_title TEXT NOT NULL,
+    book_author TEXT NOT NULL,
+    note_type TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_log_created_at
+    ON activity_log(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_log_book_id
+    ON activity_log(book_id);
+"""
+
+
+def _migration_v2(conn: sqlite3.Connection) -> None:
+    conn.executescript(_NOTES_SCHEMA)
+    conn.executescript(_ACTIVITY_LOG_SCHEMA)
+
+
 # ── Migration registry ────────────────────────────────────────────────────────
 
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _migration_v1),
+    (2, _migration_v2),
 ]
 
 
@@ -238,12 +287,55 @@ def update_book(conn: sqlite3.Connection, book_id: int, fields: dict[str, Any]) 
         f"UPDATE books SET {', '.join(set_parts)} WHERE id = ?",
         values,
     )
-    conn.commit()
     return True
 
 
 def delete_book(conn: sqlite3.Connection, book_id: int) -> bool:
     """Delete a book by ID. Returns True if the row existed."""
     cursor = conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
-    conn.commit()
     return cursor.rowcount > 0
+
+
+def insert_activity(
+    conn: sqlite3.Connection,
+    *,
+    event_type: str,
+    book_id: int,
+    book_title: str,
+    book_author: str,
+    note_id: int | None = None,
+    note_type: str | None = None,
+) -> int:
+    cursor = conn.execute(
+        """INSERT INTO activity_log
+           (event_type, book_id, note_id, book_title, book_author, note_type)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (event_type, book_id, note_id, book_title, book_author, note_type),
+    )
+    return cursor.lastrowid
+
+
+def list_activity_rows(
+    conn: sqlite3.Connection,
+    *,
+    limit: int,
+    offset: int,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """SELECT
+               activity_log.id,
+               activity_log.event_type,
+               activity_log.book_id,
+               activity_log.note_id,
+               activity_log.book_title,
+               activity_log.book_author,
+               activity_log.note_type,
+               activity_log.created_at,
+               CASE WHEN books.id IS NULL THEN 0 ELSE 1 END AS book_exists
+           FROM activity_log
+           LEFT JOIN books ON books.id = activity_log.book_id
+           ORDER BY activity_log.created_at DESC, activity_log.id DESC
+           LIMIT ? OFFSET ?""",
+        (limit, offset),
+    ).fetchall()
+    return [dict(row) for row in rows]
