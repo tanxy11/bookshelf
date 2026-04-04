@@ -6,32 +6,36 @@
   <title>Xinyu's Bookshelf</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:             #f4efe6;
-      --bg-wash:        #efe5d7;
-      --surface:        rgba(255, 251, 245, 0.8);
-      --surface-strong: #fffaf3;
-      --surface-muted:  #f1e8db;
-      --surface-soft:   rgba(255, 255, 255, 0.7);
-      --border:         rgba(122, 92, 62, 0.16);
-      --border-strong:  rgba(122, 92, 62, 0.28);
-      --muted:          #7c7267;
-      --text:           #261f18;
-      --accent:         #7a5c3e;
-      --accent-deep:    #5f4329;
-      --accent-soft:    #efe1cf;
-      --olive:          #5e6954;
-      --olive-soft:     #e5ebdd;
-      --rose:           #8c5d58;
-      --rose-soft:      #f1e1de;
-      --star-on:        #cf9550;
-      --star-off:       #d8c8b7;
-      --shadow-soft:    0 18px 50px rgba(61, 42, 22, 0.08);
-      --shadow-card:    0 12px 28px rgba(61, 42, 22, 0.12);
+      --bg:             #f7f0e8;
+      --bg-wash:        #f2e6d9;
+      --surface:        rgba(255, 252, 247, 0.82);
+      --surface-strong: #fffaf5;
+      --surface-muted:  #f4ebdf;
+      --surface-soft:   rgba(255, 255, 255, 0.74);
+      --border:         rgba(121, 94, 72, 0.11);
+      --border-strong:  rgba(121, 94, 72, 0.2);
+      --muted:          #84766d;
+      --text:           #372b22;
+      --accent:         #9c7054;
+      --accent-deep:    #785641;
+      --accent-soft:    #f3e3d5;
+      --ochre:          #b18347;
+      --ochre-soft:     #f4e7d5;
+      --olive:          #68735d;
+      --olive-soft:     #e8edde;
+      --rose:           #9b6f6a;
+      --rose-soft:      #f4e5e2;
+      --slate:          #6f7888;
+      --slate-soft:     #e7eaf1;
+      --star-on:        #c79054;
+      --star-off:       #dccfbf;
+      --shadow-soft:    0 20px 56px rgba(70, 52, 35, 0.06);
+      --shadow-card:    0 14px 34px rgba(70, 52, 35, 0.1);
       --radius:         14px;
       --radius-md:      18px;
       --radius-lg:      24px;
@@ -40,15 +44,19 @@
     html { scroll-behavior: smooth; }
 
     body {
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: 'Alegreya Sans', system-ui, sans-serif;
       background:
-        radial-gradient(circle at top, rgba(255, 248, 238, 0.94), transparent 34%),
-        linear-gradient(180deg, #f8f4ed 0%, var(--bg) 35%, #efe7da 100%);
+        radial-gradient(circle at top, rgba(255, 248, 239, 0.92), transparent 36%),
+        radial-gradient(circle at 14% 10%, rgba(156, 112, 84, 0.08), transparent 22%),
+        linear-gradient(180deg, #fbf7f1 0%, var(--bg) 38%, #f1e8dc 100%);
       color: var(--text);
-      font-size: 15px;
-      line-height: 1.6;
+      font-size: 15.5px;
+      line-height: 1.64;
+      letter-spacing: 0.002em;
       min-height: 100vh;
       position: relative;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
     }
 
     body::before {
@@ -57,10 +65,10 @@
       inset: 0;
       pointer-events: none;
       background:
-        radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.5), transparent 28%),
-        radial-gradient(circle at 82% 18%, rgba(122, 92, 62, 0.08), transparent 24%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.26), transparent 55%);
-      opacity: 0.9;
+        radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.46), transparent 28%),
+        radial-gradient(circle at 82% 18%, rgba(121, 94, 72, 0.07), transparent 24%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 55%);
+      opacity: 0.88;
     }
 
     a { color: var(--accent-deep); text-decoration: none; }
@@ -113,7 +121,8 @@
       border: 1px solid var(--border);
       border-radius: 24px;
       background:
-        linear-gradient(145deg, rgba(255, 252, 246, 0.94), rgba(245, 236, 226, 0.84)),
+        radial-gradient(circle at top right, rgba(156, 112, 84, 0.08), transparent 34%),
+        linear-gradient(145deg, rgba(255, 252, 247, 0.95), rgba(246, 238, 228, 0.88)),
         var(--surface-strong);
       box-shadow: var(--shadow-soft);
       overflow: hidden;
@@ -140,10 +149,9 @@
       border-radius: 999px;
       background: rgba(255, 250, 242, 0.75);
       color: var(--accent-deep);
-      font-size: .62rem;
-      font-weight: 700;
-      letter-spacing: .12em;
-      text-transform: uppercase;
+      font-size: .67rem;
+      font-weight: 600;
+      letter-spacing: .05em;
     }
 
     .site-kicker::before {
@@ -162,14 +170,15 @@
       line-height: .94;
       max-width: none;
       white-space: nowrap;
+      color: rgba(55, 43, 34, 0.96);
     }
 
     .site-subtitle {
-      margin-top: 8px;
-      max-width: 56ch;
+      margin-top: 10px;
+      max-width: 54ch;
       color: var(--muted);
-      font-size: .92rem;
-      line-height: 1.65;
+      font-size: .99rem;
+      line-height: 1.68;
     }
 
     .hero-copy {
@@ -187,7 +196,7 @@
       padding: 10px;
       border: 1px solid rgba(122, 92, 62, 0.14);
       border-radius: 999px;
-      background: rgba(255, 252, 247, 0.72);
+      background: rgba(255, 252, 247, 0.68);
       backdrop-filter: blur(10px);
     }
 
@@ -195,8 +204,9 @@
       padding: 7px 12px;
       border-radius: 999px;
       color: var(--muted);
-      font-size: .8rem;
-      letter-spacing: .02em;
+      font-size: .84rem;
+      font-weight: 500;
+      letter-spacing: .01em;
       transition: background .18s ease, color .18s ease, transform .18s ease;
     }
 
@@ -219,7 +229,7 @@
       width: 100%;
       padding-top: 18px;
       padding-bottom: 4px;
-      border-top: 1px solid rgba(122, 92, 62, 0.1);
+      border-top: 1px solid rgba(121, 94, 72, 0.08);
     }
 
     .activity-preview-list {
@@ -230,9 +240,10 @@
     }
 
     .activity-item {
+      --activity-tint: var(--accent);
       min-width: 0;
       padding-left: 20px;
-      border-left: 1px solid rgba(122, 92, 62, 0.06);
+      border-left: 1px solid rgba(121, 94, 72, 0.05);
       position: relative;
     }
 
@@ -245,26 +256,32 @@
       position: absolute;
       left: -2px;
       top: 8px;
-      width: 4px;
-      height: 4px;
+      width: 5px;
+      height: 5px;
       border-radius: 50%;
-      background: var(--accent);
-      opacity: 0.75;
+      background: var(--activity-tint);
+      opacity: 0.82;
     }
 
     .activity-item:first-child .activity-dot {
       left: 0;
     }
 
-    .activity-dot.is-finished { background: var(--accent); }
-    .activity-dot.is-started { background: var(--olive); }
-    .activity-dot.is-queued { background: var(--rose); }
+    .activity-item.is-finished { --activity-tint: var(--ochre); }
+    .activity-item.is-started  { --activity-tint: var(--olive); }
+    .activity-item.is-queued   { --activity-tint: var(--rose); }
+    .activity-item.is-note     { --activity-tint: var(--slate); }
 
     .activity-item-title {
       color: var(--text);
-      font-size: .9rem;
+      font-size: .95rem;
       font-weight: 500;
-      line-height: 1.55;
+      line-height: 1.5;
+    }
+
+    .activity-item-verb {
+      color: var(--activity-tint);
+      font-weight: 600;
     }
 
     a.activity-item-title {
@@ -277,11 +294,10 @@
     }
 
     .activity-item-time {
-      margin-top: 5px;
+      margin-top: 4px;
       color: var(--muted);
-      font-size: .69rem;
-      letter-spacing: .04em;
-      text-transform: uppercase;
+      font-size: .76rem;
+      letter-spacing: .01em;
     }
 
     .activity-preview-link {
@@ -291,8 +307,8 @@
       justify-self: end;
       align-self: start;
       margin-top: 4px;
-      color: rgba(95, 67, 41, 0.86);
-      font-size: .78rem;
+      color: rgba(120, 86, 65, 0.88);
+      font-size: .82rem;
       font-weight: 600;
       white-space: nowrap;
       letter-spacing: .01em;
@@ -335,7 +351,7 @@
       font-family: 'Cormorant Garamond', 'Times New Roman', serif;
       font-size: clamp(1.9rem, 3.2vw, 2.8rem);
       font-weight: 600;
-      color: var(--text);
+      color: rgba(55, 43, 34, 0.94);
       display: flex;
       align-items: center;
       gap: 10px;
@@ -347,7 +363,8 @@
       margin-top: 8px;
       color: var(--muted);
       max-width: 64ch;
-      font-size: .92rem;
+      font-size: .96rem;
+      line-height: 1.62;
     }
 
     .section-count,
@@ -362,10 +379,9 @@
       min-height: 30px;
       border-radius: 999px;
       border: 1px solid rgba(122, 92, 62, 0.14);
-      font-size: .68rem;
-      font-weight: 700;
-      letter-spacing: .08em;
-      text-transform: uppercase;
+      font-size: .69rem;
+      font-weight: 600;
+      letter-spacing: .05em;
       white-space: nowrap;
     }
 
@@ -456,10 +472,9 @@
     }
 
     .taste-summary-label {
-      font-size: .66rem;
-      font-weight: 700;
-      letter-spacing: .12em;
-      text-transform: uppercase;
+      font-size: .69rem;
+      font-weight: 600;
+      letter-spacing: .05em;
       color: var(--muted);
     }
 
@@ -668,11 +683,10 @@
     }
 
     .control-label {
-      font-size: .67rem;
-      font-weight: 700;
+      font-size: .69rem;
+      font-weight: 600;
       color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .11em;
+      letter-spacing: .05em;
       white-space: nowrap;
       min-width: 40px;
     }
@@ -817,12 +831,11 @@
       border: 1px solid rgba(95, 67, 41, 0.12);
       border-radius: 999px;
       background: rgba(255, 250, 243, 0.72);
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: .58rem;
-      font-weight: 700;
-      letter-spacing: .08em;
+      font-family: 'Alegreya Sans', system-ui, sans-serif;
+      font-size: .61rem;
+      font-weight: 600;
+      letter-spacing: .05em;
       line-height: 1;
-      text-transform: uppercase;
     }
 
     .book-cover-placeholder-copy {
@@ -839,10 +852,10 @@
     }
 
     .book-cover-placeholder-author {
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: .68rem;
+      font-family: 'Alegreya Sans', system-ui, sans-serif;
+      font-size: .72rem;
       line-height: 1.35;
-      color: rgba(38, 31, 24, 0.72);
+      color: rgba(55, 43, 34, 0.72);
     }
 
     .book-hovercard {
@@ -899,9 +912,8 @@
     }
 
     .hovercard-label {
-      font-size: .68rem;
-      text-transform: uppercase;
-      letter-spacing: .06em;
+      font-size: .7rem;
+      letter-spacing: .04em;
       color: var(--muted);
       white-space: nowrap;
     }
@@ -1330,10 +1342,9 @@
     .weeks-tooltip-week {
       font-weight: 600;
       margin-bottom: 6px;
-      font-size: .72rem;
+      font-size: .75rem;
       color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .03em;
+      letter-spacing: .02em;
     }
 
     .weeks-tooltip-book + .weeks-tooltip-book {
@@ -1637,9 +1648,18 @@ function escHtml(str) {
 }
 
 function activityClass(eventType) {
+  if (eventType === 'finished_reading') return 'is-finished';
   if (eventType === 'started_reading') return 'is-started';
   if (eventType === 'book_added_to_to_read') return 'is-queued';
+  if (eventType === 'note_added') return 'is-note';
   return '';
+}
+
+function renderActivitySummary(summary) {
+  const text = String(summary || '');
+  const match = text.match(/^([A-Za-z]+)(\s+)(.*)$/);
+  if (!match) return escHtml(text);
+  return `<span class="activity-item-verb">${escHtml(match[1])}</span>${match[2]}${escHtml(match[3])}`;
 }
 
 function renderActivityPreview(payload) {
@@ -1652,11 +1672,11 @@ function renderActivityPreview(payload) {
   }
 
   list.innerHTML = items.map(item => `
-    <article class="activity-item">
-      <span class="activity-dot ${activityClass(item.event_type)}" aria-hidden="true"></span>
+    <article class="activity-item ${activityClass(item.event_type)}">
+      <span class="activity-dot" aria-hidden="true"></span>
       ${item.book && item.book.href
-        ? `<a class="activity-item-title" href="${escHtml(item.book.href)}">${escHtml(item.summary)}</a>`
-        : `<p class="activity-item-title">${escHtml(item.summary)}</p>`}
+        ? `<a class="activity-item-title" href="${escHtml(item.book.href)}">${renderActivitySummary(item.summary)}</a>`
+        : `<p class="activity-item-title">${renderActivitySummary(item.summary)}</p>`}
       <p class="activity-item-time">${escHtml(formatRelativeDate(item.created_at))}</p>
     </article>
   `).join('');
