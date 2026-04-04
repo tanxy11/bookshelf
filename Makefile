@@ -17,7 +17,8 @@ FORCE_LLM ?= 0
 
 .PHONY: install parse llm llm-force llm-staging llm-staging-force build refresh-data dev \
         deploy deploy-sync restart-api backup pull-db push-db \
-        deploy-staging deploy-staging-sync restart-staging-api seed-staging
+        deploy-staging deploy-staging-sync restart-staging-api seed-staging \
+        add-notes-table
 
 install:
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -136,3 +137,8 @@ seed-staging:
 	ssh $(VPS_HOST) 'cp $(VPS_PATH)/data/bookshelf.db $(STAGING_VPS_PATH)/data/bookshelf.db'
 	@echo "Done. Restart staging to pick up the new database:"
 	@echo "  make restart-staging-api"
+
+# ── Migrations ──────────────────────────────────────────────────────────────
+
+add-notes-table:
+	$(RUN_PYTHON) scripts/add_notes_table.py
