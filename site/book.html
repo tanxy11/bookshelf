@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book — Xinyu's Bookshelf</title>
+  <meta property="og:title" content="">
+  <meta property="og:description" content="">
+  <meta property="og:image" content="">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f4efe6; --bg-wash: #efe5d7;
+      --surface: rgba(255,251,245,0.8); --surface-strong: #fffaf3;
+      --border: rgba(122,92,62,0.16); --border-strong: rgba(122,92,62,0.28);
+      --muted: #7c7267; --text: #261f18;
+      --accent: #7a5c3e; --accent-deep: #5f4329; --accent-soft: #efe1cf;
+      --olive: #5e6954; --olive-soft: #e5ebdd;
+      --danger: #8c5d58; --danger-soft: rgba(140,93,88,0.1);
+      --star-on: #cf9550; --star-off: #d8c8b7;
+      --shadow-soft: 0 18px 50px rgba(61,42,22,0.08);
+      --radius: 14px;
+      --question-accent: #5b7a8c;
+      --question-soft: #e0eaf0;
+    }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: linear-gradient(180deg, #f8f4ed 0%, var(--bg) 35%, #efe7da 100%);
+      color: var(--text); font-size: 15px; line-height: 1.6; min-height: 100vh;
+    }
+    a { color: var(--accent-deep); text-decoration: none; }
+    a:hover { color: var(--accent); }
+
+    .container { max-width: 720px; margin: 0 auto; padding: 24px; }
+    .back { display: inline-block; margin-bottom: 20px; font-size: .85rem; color: var(--muted); }
+    .back:hover { color: var(--accent-deep); }
+
+    /* Hero */
+    .hero {
+      display: flex; gap: 24px; align-items: flex-start;
+      padding: 24px; border-radius: var(--radius);
+      background: var(--surface); border: 1px solid var(--border);
+      box-shadow: var(--shadow-soft); position: relative;
+    }
+    .hero-cover {
+      flex-shrink: 0; width: 120px; height: 180px;
+      border-radius: 8px; overflow: hidden;
+      background: var(--bg-wash); border: 1px solid var(--border);
+    }
+    .hero-cover img { width: 100%; height: 100%; object-fit: cover; }
+    .hero-cover .placeholder {
+      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 2rem;
+    }
+    .hero-info { flex: 1; min-width: 0; }
+    .hero-title {
+      font-family: 'Cormorant Garamond', serif; font-size: 1.8rem; font-weight: 600;
+      line-height: 1.2; margin-bottom: 4px;
+    }
+    .hero-author { font-size: 1rem; color: var(--muted); margin-bottom: 10px; }
+    .hero-meta { font-size: .85rem; color: var(--muted); margin-bottom: 10px; }
+    .hero-meta .stars { color: var(--star-on); letter-spacing: 1px; }
+    .hero-meta .star-off { color: var(--star-off); }
+    .hero-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag-pill {
+      display: inline-block; padding: 4px 10px; border-radius: 999px;
+      font-size: .75rem; border: 1px solid var(--border);
+      background: rgba(255,255,255,0.88); color: var(--text);
+    }
+    .edit-link {
+      position: absolute; top: 12px; right: 12px;
+      font-size: .8rem; color: var(--muted);
+    }
+    .edit-link:hover { color: var(--accent-deep); }
+
+    /* Review */
+    .section { margin-top: 32px; }
+    .section-title {
+      font-family: 'Cormorant Garamond', serif; font-size: 1.4rem; font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .review-text { white-space: pre-wrap; line-height: 1.7; }
+
+    /* Notes */
+    .notes-empty { color: var(--muted); font-size: .9rem; }
+    .note { margin-bottom: 20px; }
+    .note-label {
+      display: inline-block; font-size: .65rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-bottom: 4px;
+    }
+    .note-location {
+      font-size: .75rem; color: var(--muted); margin-left: 8px; font-weight: 400;
+      text-transform: none; letter-spacing: 0;
+    }
+    .note-content { white-space: pre-wrap; line-height: 1.6; }
+
+    /* Quote */
+    .note-quote .note-content {
+      border-left: 3px solid var(--accent); padding-left: 14px;
+      font-style: italic; color: var(--text);
+    }
+
+    /* Disagreement */
+    .note-disagreement .note-content {
+      border-left: 3px solid var(--danger); padding-left: 14px;
+    }
+
+    /* Question */
+    .note-question .note-label { color: var(--question-accent); }
+    .note-question .note-content {
+      border-left: 3px solid var(--question-accent); padding-left: 14px;
+    }
+
+    /* Connection card */
+    .connected-card {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 10px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.7);
+      margin-bottom: 8px; text-decoration: none; color: var(--text);
+      transition: background .14s;
+    }
+    .connected-card:hover { background: var(--accent-soft); }
+    .connected-cover {
+      width: 32px; height: 48px; border-radius: 4px; overflow: hidden;
+      background: var(--bg-wash); flex-shrink: 0;
+    }
+    .connected-cover img { width: 100%; height: 100%; object-fit: cover; }
+    .connected-title { font-size: .82rem; font-weight: 600; line-height: 1.2; }
+    .connected-author { font-size: .75rem; color: var(--muted); }
+
+    .note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .note-tag {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: .68rem; background: var(--accent-soft); color: var(--accent-deep);
+    }
+
+    .loading { text-align: center; padding: 48px; color: var(--muted); }
+
+    @media (max-width: 560px) {
+      .hero { flex-direction: column; align-items: center; text-align: center; }
+      .hero-tags { justify-content: center; }
+      .edit-link { top: 8px; right: 8px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="index.html">&larr; Back to bookshelf</a>
+  <div class="loading" id="loading">Loading book...</div>
+  <div id="content" style="display:none">
+    <div class="hero" id="hero"></div>
+    <div class="section" id="review-section" style="display:none">
+      <h2 class="section-title">Review</h2>
+      <div class="review-text" id="review-text"></div>
+    </div>
+    <div class="section" id="notes-section">
+      <h2 class="section-title" id="notes-title">Notes</h2>
+      <div id="notes-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const AUTH_KEY = 'bookshelf_auth_token';
+const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const localApiPort = location.port === '8010' ? '8011' : '8001';
+const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
+
+const params = new URLSearchParams(location.search);
+const bookId = params.get('id');
+
+function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function stars(rating) {
+  let html = '';
+  for (let i = 1; i <= 5; i++) {
+    html += i <= rating
+      ? '<span class="stars">&#9733;</span>'
+      : '<span class="star-off">&#9733;</span>';
+  }
+  return html;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function formatNoteDate(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+const RESERVED_SHELF_TAGS = new Set(['read', 'currently-reading', 'to-read']);
+
+function renderHero(book) {
+  const coverHtml = book.cover_url
+    ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}">`
+    : '<div class="placeholder">&#128214;</div>';
+
+  const metaParts = [];
+  if (book.my_rating) metaParts.push(stars(book.my_rating));
+  if (book.pages) metaParts.push(`${Number(book.pages).toLocaleString()} pages`);
+  if (book.date_read) metaParts.push(`Read: ${formatDate(book.date_read)}`);
+
+  const shelves = (book.shelves || []).filter(s => !RESERVED_SHELF_TAGS.has(s));
+  const tagsHtml = shelves.length
+    ? `<div class="hero-tags">${shelves.map(s => `<span class="tag-pill">${escHtml(s)}</span>`).join('')}</div>`
+    : '';
+
+  const isAuth = !!getToken();
+  const editHtml = isAuth && book.id
+    ? `<a class="edit-link" href="edit.html?id=${book.id}">Edit</a>`
+    : '';
+
+  document.getElementById('hero').innerHTML = `
+    ${editHtml}
+    <div class="hero-cover">${coverHtml}</div>
+    <div class="hero-info">
+      <div class="hero-title">${escHtml(book.title)}</div>
+      <div class="hero-author">${escHtml(book.author)}</div>
+      <div class="hero-meta">${metaParts.join('  &middot;  ')}</div>
+      ${tagsHtml}
+    </div>
+  `;
+}
+
+function renderReview(book) {
+  const review = (book.my_review || '').trim();
+  if (!review) return;
+  document.getElementById('review-text').textContent = review;
+  document.getElementById('review-section').style.display = '';
+}
+
+function renderNote(note) {
+  const typeClass = `note-${note.note_type}`;
+  const typeLabels = {
+    thought: 'Thought', quote: 'Quote', connection: 'Connection',
+    disagreement: 'Disagreement', question: 'Question',
+  };
+
+  let label = typeLabels[note.note_type] || note.note_type;
+  if (note.note_type === 'connection' && note.connected_book) {
+    label += ` &rarr; ${escHtml(note.connected_book.title)}`;
+  }
+  if (note.note_type === 'question') label = '? ' + label;
+
+  const locationHtml = note.page_or_location
+    ? `<span class="note-location">${escHtml(note.page_or_location)}</span>`
+    : (note.note_type === 'thought' ? `<span class="note-location">${formatNoteDate(note.created_at)}</span>` : '');
+
+  let connectedHtml = '';
+  if (note.note_type === 'connection' && note.connected_book) {
+    const cb = note.connected_book;
+    const coverImg = cb.cover_url
+      ? `<img src="${escHtml(cb.cover_url)}" alt="${escHtml(cb.title)}">`
+      : '';
+    connectedHtml = `
+      <a class="connected-card" href="/book?id=${cb.id}">
+        <div class="connected-cover">${coverImg}</div>
+        <div>
+          <div class="connected-title">${escHtml(cb.title)}</div>
+          <div class="connected-author">${escHtml(cb.author)}</div>
+        </div>
+      </a>
+    `;
+  }
+
+  const tagsHtml = (note.tags && note.tags.length)
+    ? `<div class="note-tags">${note.tags.map(t => `<span class="note-tag">${escHtml(t)}</span>`).join('')}</div>`
+    : '';
+
+  return `
+    <div class="note ${typeClass}">
+      <div class="note-label">${label}${locationHtml}</div>
+      ${connectedHtml}
+      <div class="note-content">${escHtml(note.content)}</div>
+      ${tagsHtml}
+    </div>
+  `;
+}
+
+function renderNotes(notes) {
+  const count = notes.length;
+  document.getElementById('notes-title').textContent = count ? `Notes (${count})` : 'Notes';
+
+  if (!count) {
+    const isAuth = !!getToken();
+    document.getElementById('notes-list').innerHTML =
+      `<p class="notes-empty">No notes yet.${isAuth ? ' Add your first note below.' : ''}</p>`;
+    return;
+  }
+
+  document.getElementById('notes-list').innerHTML = notes.map(renderNote).join('');
+}
+
+function updateMeta(book, noteCount) {
+  document.title = `${book.title} — Xinyu's Bookshelf`;
+  document.querySelector('meta[property="og:title"]').setAttribute('content', `${book.title} — Xinyu's Bookshelf`);
+  document.querySelector('meta[property="og:description"]').setAttribute('content',
+    `${book.author} \u00b7 ${book.my_rating || 0} stars \u00b7 ${noteCount} notes`);
+  if (book.cover_url) {
+    document.querySelector('meta[property="og:image"]').setAttribute('content', book.cover_url);
+  }
+}
+
+async function loadPage() {
+  if (!bookId) {
+    document.getElementById('loading').textContent = 'No book ID specified.';
+    return;
+  }
+
+  try {
+    const [booksResp, notesResp] = await Promise.all([
+      fetch(`${apiBase}/api/books`),
+      fetch(`${apiBase}/api/books/${bookId}/notes`),
+    ]);
+
+    const booksData = await booksResp.json();
+    if (!booksResp.ok) throw new Error(booksData.detail || 'Failed to load books');
+
+    const allBooks = [
+      ...(booksData.books.read || []),
+      ...(booksData.books.currently_reading || []),
+      ...(booksData.books.to_read || []),
+    ];
+    const book = allBooks.find(b => String(b.id) === bookId);
+    if (!book) {
+      document.getElementById('loading').textContent = 'Book not found.';
+      return;
+    }
+
+    let notes = [];
+    if (notesResp.ok) {
+      const notesData = await notesResp.json();
+      notes = notesData.notes || [];
+    }
+
+    renderHero(book);
+    renderReview(book);
+    renderNotes(notes);
+    updateMeta(book, notes.length);
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = '';
+  } catch (err) {
+    document.getElementById('loading').textContent = `Failed to load: ${err.message}`;
+  }
+}
+
+loadPage();
+</script>
+</body>
+</html>
