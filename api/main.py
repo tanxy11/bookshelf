@@ -18,6 +18,7 @@ from bookshelf_data import (
     utc_now_iso,
 )
 from api.auth import verify_auth
+from api.notes import router as notes_router
 
 load_env_file(ROOT_DIR / ".env")
 
@@ -48,6 +49,7 @@ else:
     store = BookshelfStore(BOOKS_DATA_FILE, LLM_CACHE_FILE)
 
 app = FastAPI(title="Bookshelf API")
+app.include_router(notes_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
