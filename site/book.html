@@ -86,7 +86,7 @@
 
     /* Notes */
     .notes-empty { color: var(--muted); font-size: .9rem; }
-    .note { margin-bottom: 20px; }
+    .note { margin-bottom: 20px; position: relative; }
     .note-label {
       display: inline-block; font-size: .65rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: .08em; color: var(--muted); margin-bottom: 4px;
@@ -96,19 +96,13 @@
       text-transform: none; letter-spacing: 0;
     }
     .note-content { white-space: pre-wrap; line-height: 1.6; }
-
-    /* Quote */
     .note-quote .note-content {
       border-left: 3px solid var(--accent); padding-left: 14px;
       font-style: italic; color: var(--text);
     }
-
-    /* Disagreement */
     .note-disagreement .note-content {
       border-left: 3px solid var(--danger); padding-left: 14px;
     }
-
-    /* Question */
     .note-question .note-label { color: var(--question-accent); }
     .note-question .note-content {
       border-left: 3px solid var(--question-accent); padding-left: 14px;
@@ -137,12 +131,113 @@
       font-size: .68rem; background: var(--accent-soft); color: var(--accent-deep);
     }
 
+    /* Note actions (edit/delete) */
+    .note-actions {
+      position: absolute; top: 0; right: 0;
+      display: flex; gap: 8px;
+    }
+    .note-actions button {
+      background: none; border: none; font: inherit; font-size: .72rem;
+      color: var(--muted); cursor: pointer; padding: 2px 4px;
+    }
+    .note-actions button:hover { color: var(--accent-deep); }
+
+    /* Note flash animation */
+    @keyframes note-flash {
+      0% { background: var(--olive-soft); }
+      100% { background: transparent; }
+    }
+    .note-added { animation: note-flash 1.5s ease-out; }
+
+    /* Add/Edit note form */
+    .note-form-wrap {
+      margin-top: 24px; padding: 20px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--surface);
+    }
+    .note-form-title {
+      font-family: 'Cormorant Garamond', serif; font-size: 1.1rem; font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .note-form { display: grid; gap: 12px; }
+    .note-form label {
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); display: block; margin-bottom: 3px;
+    }
+    .note-form select, .note-form input, .note-form textarea {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: rgba(255,255,255,0.8); font-size: .88rem; font-family: inherit; color: var(--text);
+    }
+    .note-form select:focus, .note-form input:focus, .note-form textarea:focus {
+      outline: none; border-color: rgba(122,92,62,0.42); box-shadow: 0 0 0 3px rgba(122,92,62,0.08);
+    }
+    .note-form textarea { min-height: 80px; resize: vertical; }
+    .note-form-row { display: flex; gap: 12px; align-items: flex-end; }
+    .note-form-row > * { flex: 1; }
+
+    .btn {
+      padding: 10px 20px; border: none; border-radius: 12px;
+      font-family: inherit; font-size: .85rem; font-weight: 600; cursor: pointer;
+      transition: background .14s, transform .14s;
+    }
+    .btn-primary { background: var(--accent-deep); color: #fff; }
+    .btn-primary:hover { background: var(--accent); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary {
+      background: rgba(255,255,255,0.8); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--accent-soft); }
+    .btn-row { display: flex; gap: 10px; justify-content: flex-end; }
+
+    .form-error {
+      padding: 8px 12px; border-radius: 8px; font-size: .82rem;
+      background: var(--danger-soft); color: var(--danger);
+      border: 1px solid rgba(140,93,88,0.2);
+    }
+
+    /* Connection autocomplete */
+    .connect-field { position: relative; }
+    .connect-results {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
+      background: var(--surface-strong); border: 1px solid var(--border-strong);
+      border-radius: 10px; box-shadow: var(--shadow-soft); max-height: 200px; overflow-y: auto;
+    }
+    .connect-result {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      cursor: pointer; font-size: .85rem;
+    }
+    .connect-result:hover { background: var(--accent-soft); }
+    .connect-result-author { color: var(--muted); font-size: .78rem; }
+    .connect-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 10px; border-radius: 8px; font-size: .82rem;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.88);
+      margin-top: 6px;
+    }
+    .connect-chip button {
+      background: none; border: none; font: inherit; color: var(--muted);
+      cursor: pointer; padding: 0; line-height: 1;
+    }
+    .connect-chip button:hover { color: var(--accent-deep); }
+
+    /* Tags toggle */
+    .tags-toggle {
+      background: none; border: none; font: inherit; font-size: .82rem;
+      color: var(--accent-deep); cursor: pointer; padding: 0;
+    }
+    .tags-toggle:hover { text-decoration: underline; }
+
+    /* Inline edit form (inside a note) */
+    .note-edit-form { display: grid; gap: 10px; padding: 12px 0; }
+
     .loading { text-align: center; padding: 48px; color: var(--muted); }
+    .hidden { display: none; }
 
     @media (max-width: 560px) {
       .hero { flex-direction: column; align-items: center; text-align: center; }
       .hero-tags { justify-content: center; }
       .edit-link { top: 8px; right: 8px; }
+      .note-form-row { flex-direction: column; }
     }
   </style>
 </head>
@@ -159,6 +254,7 @@
     <div class="section" id="notes-section">
       <h2 class="section-title" id="notes-title">Notes</h2>
       <div id="notes-list"></div>
+      <div id="add-note-wrap"></div>
     </div>
   </div>
 </div>
@@ -172,7 +268,11 @@ const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
 const params = new URLSearchParams(location.search);
 const bookId = params.get('id');
 
+let allBooks = [];
+let currentNotes = [];
+
 function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
+function isAuth() { return !!getToken(); }
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 function stars(rating) {
@@ -199,26 +299,30 @@ function formatNoteDate(isoStr) {
 
 const RESERVED_SHELF_TAGS = new Set(['read', 'currently-reading', 'to-read']);
 
+const PLACEHOLDERS = {
+  thought: 'What stuck with you, what you\'d tell a friend...',
+  quote: 'Enter the exact passage...',
+  connection: 'How does this connect to the other book...',
+  disagreement: 'What do you push back on and why...',
+  question: 'What\'s left unresolved...',
+};
+
+// ── Hero ────────────────────────────────────────────────────────────────────
+
 function renderHero(book) {
   const coverHtml = book.cover_url
     ? `<img src="${escHtml(book.cover_url)}" alt="${escHtml(book.title)}">`
     : '<div class="placeholder">&#128214;</div>';
-
   const metaParts = [];
   if (book.my_rating) metaParts.push(stars(book.my_rating));
   if (book.pages) metaParts.push(`${Number(book.pages).toLocaleString()} pages`);
   if (book.date_read) metaParts.push(`Read: ${formatDate(book.date_read)}`);
-
   const shelves = (book.shelves || []).filter(s => !RESERVED_SHELF_TAGS.has(s));
   const tagsHtml = shelves.length
     ? `<div class="hero-tags">${shelves.map(s => `<span class="tag-pill">${escHtml(s)}</span>`).join('')}</div>`
     : '';
-
-  const isAuth = !!getToken();
-  const editHtml = isAuth && book.id
-    ? `<a class="edit-link" href="edit.html?id=${book.id}">Edit</a>`
-    : '';
-
+  const editHtml = isAuth() && book.id
+    ? `<a class="edit-link" href="edit.html?id=${book.id}">Edit</a>` : '';
   document.getElementById('hero').innerHTML = `
     ${editHtml}
     <div class="hero-cover">${coverHtml}</div>
@@ -238,13 +342,14 @@ function renderReview(book) {
   document.getElementById('review-section').style.display = '';
 }
 
-function renderNote(note) {
+// ── Notes rendering ─────────────────────────────────────────────────────────
+
+function renderNoteHtml(note) {
   const typeClass = `note-${note.note_type}`;
   const typeLabels = {
     thought: 'Thought', quote: 'Quote', connection: 'Connection',
     disagreement: 'Disagreement', question: 'Question',
   };
-
   let label = typeLabels[note.note_type] || note.note_type;
   if (note.note_type === 'connection' && note.connected_book) {
     label += ` &rarr; ${escHtml(note.connected_book.title)}`;
@@ -259,8 +364,7 @@ function renderNote(note) {
   if (note.note_type === 'connection' && note.connected_book) {
     const cb = note.connected_book;
     const coverImg = cb.cover_url
-      ? `<img src="${escHtml(cb.cover_url)}" alt="${escHtml(cb.title)}">`
-      : '';
+      ? `<img src="${escHtml(cb.cover_url)}" alt="${escHtml(cb.title)}">` : '';
     connectedHtml = `
       <a class="connected-card" href="/book?id=${cb.id}">
         <div class="connected-cover">${coverImg}</div>
@@ -268,37 +372,442 @@ function renderNote(note) {
           <div class="connected-title">${escHtml(cb.title)}</div>
           <div class="connected-author">${escHtml(cb.author)}</div>
         </div>
-      </a>
-    `;
+      </a>`;
   }
 
   const tagsHtml = (note.tags && note.tags.length)
     ? `<div class="note-tags">${note.tags.map(t => `<span class="note-tag">${escHtml(t)}</span>`).join('')}</div>`
     : '';
 
+  const actionsHtml = isAuth() ? `
+    <div class="note-actions">
+      <button data-edit-note="${note.id}">edit</button>
+      <button data-delete-note="${note.id}">delete</button>
+    </div>` : '';
+
   return `
-    <div class="note ${typeClass}">
-      <div class="note-label">${label}${locationHtml}</div>
-      ${connectedHtml}
-      <div class="note-content">${escHtml(note.content)}</div>
-      ${tagsHtml}
-    </div>
-  `;
+    <div class="note ${typeClass}" data-note-id="${note.id}">
+      ${actionsHtml}
+      <div class="note-display">
+        <div class="note-label">${label}${locationHtml}</div>
+        ${connectedHtml}
+        <div class="note-content">${escHtml(note.content)}</div>
+        ${tagsHtml}
+      </div>
+    </div>`;
+}
+
+function updateNotesTitle() {
+  const count = currentNotes.length;
+  document.getElementById('notes-title').textContent = count ? `Notes (${count})` : 'Notes';
 }
 
 function renderNotes(notes) {
-  const count = notes.length;
-  document.getElementById('notes-title').textContent = count ? `Notes (${count})` : 'Notes';
-
-  if (!count) {
-    const isAuth = !!getToken();
+  currentNotes = notes;
+  updateNotesTitle();
+  if (!notes.length) {
     document.getElementById('notes-list').innerHTML =
-      `<p class="notes-empty">No notes yet.${isAuth ? ' Add your first note below.' : ''}</p>`;
+      `<p class="notes-empty">No notes yet.${isAuth() ? ' Add your first note below.' : ''}</p>`;
+    return;
+  }
+  document.getElementById('notes-list').innerHTML = notes.map(renderNoteHtml).join('');
+}
+
+// ── Note form builder (shared by add & edit) ────────────────────────────────
+
+function buildNoteFormHtml(opts = {}) {
+  const { noteType = 'thought', content = '', pageOrLocation = '', connectedId = null, connectedBook = null, tags = [], formId = 'add' } = opts;
+  const prefix = `nf-${formId}`;
+  const showConnect = noteType === 'connection';
+
+  const connectedChipHtml = connectedBook
+    ? `<div class="connect-chip" id="${prefix}-connect-chip">
+        <span>${escHtml(connectedBook.title)} — ${escHtml(connectedBook.author)}</span>
+        <button type="button" data-clear-connect="${prefix}">&times;</button>
+       </div>`
+    : `<div class="connect-chip hidden" id="${prefix}-connect-chip"></div>`;
+
+  return `
+    <div class="note-form" data-form-prefix="${prefix}">
+      <div>
+        <label for="${prefix}-type">Type</label>
+        <select id="${prefix}-type">
+          <option value="thought"${noteType === 'thought' ? ' selected' : ''}>Thought</option>
+          <option value="quote"${noteType === 'quote' ? ' selected' : ''}>Quote</option>
+          <option value="connection"${noteType === 'connection' ? ' selected' : ''}>Connection</option>
+          <option value="disagreement"${noteType === 'disagreement' ? ' selected' : ''}>Disagreement</option>
+          <option value="question"${noteType === 'question' ? ' selected' : ''}>Question</option>
+        </select>
+      </div>
+      <div>
+        <label for="${prefix}-content">Note</label>
+        <textarea id="${prefix}-content" placeholder="${escHtml(PLACEHOLDERS[noteType] || '')}">${escHtml(content)}</textarea>
+      </div>
+      <div class="note-form-row">
+        <div>
+          <label for="${prefix}-location">Page / Location</label>
+          <input type="text" id="${prefix}-location" placeholder="p.147, ch.3, etc." value="${escHtml(pageOrLocation || '')}">
+        </div>
+      </div>
+      <div class="connect-field${showConnect ? '' : ' hidden'}" id="${prefix}-connect-wrap">
+        <label for="${prefix}-connect-input">Connect to</label>
+        <input type="text" id="${prefix}-connect-input" placeholder="Search for a book..." autocomplete="off">
+        <input type="hidden" id="${prefix}-connect-id" value="${connectedId || ''}">
+        <div class="connect-results hidden" id="${prefix}-connect-results"></div>
+        ${connectedChipHtml}
+      </div>
+      <div>
+        <button type="button" class="tags-toggle" id="${prefix}-tags-toggle">${tags.length ? 'Tags' : '+ Add tags'}</button>
+        <div class="${tags.length ? '' : 'hidden'}" id="${prefix}-tags-wrap" style="margin-top:6px">
+          <input type="text" id="${prefix}-tags" placeholder="comma-separated, e.g. systems-thinking, emergence" value="${escHtml(tags.join(', '))}">
+        </div>
+      </div>
+      <div class="form-error hidden" id="${prefix}-error"></div>
+    </div>`;
+}
+
+function getFormValues(prefix) {
+  const noteType = document.getElementById(`${prefix}-type`).value;
+  const content = document.getElementById(`${prefix}-content`).value.trim();
+  const pageOrLocation = document.getElementById(`${prefix}-location`).value.trim() || null;
+  const connectedId = document.getElementById(`${prefix}-connect-id`).value || null;
+  const tagsRaw = document.getElementById(`${prefix}-tags`).value;
+  const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : null;
+
+  return {
+    note_type: noteType,
+    content,
+    page_or_location: pageOrLocation,
+    connected_source_id: connectedId ? Number(connectedId) : null,
+    tags: tags && tags.length ? tags : null,
+  };
+}
+
+function showFormError(prefix, msg) {
+  const el = document.getElementById(`${prefix}-error`);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function hideFormError(prefix) {
+  document.getElementById(`${prefix}-error`).classList.add('hidden');
+}
+
+// ── Add note form ───────────────────────────────────────────────────────────
+
+function renderAddNoteForm() {
+  if (!isAuth()) {
+    document.getElementById('add-note-wrap').innerHTML = '';
+    return;
+  }
+  document.getElementById('add-note-wrap').innerHTML = `
+    <div class="note-form-wrap">
+      <div class="note-form-title">Add a note</div>
+      ${buildNoteFormHtml({ formId: 'add' })}
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-primary" id="add-note-btn">+ Add note</button>
+      </div>
+    </div>`;
+  setupFormInteractions('nf-add');
+}
+
+// ── Form interactions (type change, autocomplete, tags toggle) ──────────────
+
+function setupFormInteractions(prefix) {
+  const typeSelect = document.getElementById(`${prefix}-type`);
+  const contentEl = document.getElementById(`${prefix}-content`);
+  const connectWrap = document.getElementById(`${prefix}-connect-wrap`);
+  const connectInput = document.getElementById(`${prefix}-connect-input`);
+  const connectResults = document.getElementById(`${prefix}-connect-results`);
+  const connectIdEl = document.getElementById(`${prefix}-connect-id`);
+  const connectChip = document.getElementById(`${prefix}-connect-chip`);
+  const tagsToggle = document.getElementById(`${prefix}-tags-toggle`);
+  const tagsWrap = document.getElementById(`${prefix}-tags-wrap`);
+
+  // Type change → update placeholder + show/hide connect field
+  typeSelect.addEventListener('change', () => {
+    contentEl.placeholder = PLACEHOLDERS[typeSelect.value] || '';
+    if (typeSelect.value === 'connection') {
+      connectWrap.classList.remove('hidden');
+    } else {
+      connectWrap.classList.add('hidden');
+    }
+  });
+
+  // Auto-grow textarea
+  contentEl.addEventListener('input', () => {
+    contentEl.style.height = 'auto';
+    contentEl.style.height = contentEl.scrollHeight + 'px';
+  });
+
+  // Tags toggle
+  tagsToggle.addEventListener('click', () => {
+    tagsWrap.classList.toggle('hidden');
+    if (!tagsWrap.classList.contains('hidden')) {
+      document.getElementById(`${prefix}-tags`).focus();
+    }
+  });
+
+  // Connection autocomplete
+  let searchTimeout;
+  connectInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    const q = connectInput.value.trim();
+    if (q.length < 2) { connectResults.classList.add('hidden'); return; }
+    searchTimeout = setTimeout(() => {
+      const matches = allBooks
+        .filter(b => String(b.id) !== bookId &&
+          (`${b.title} ${b.author}`.toLowerCase().includes(q.toLowerCase())))
+        .slice(0, 8);
+      if (!matches.length) { connectResults.classList.add('hidden'); return; }
+      connectResults.innerHTML = matches.map(b =>
+        `<div class="connect-result" data-book-id="${b.id}" data-book-title="${escHtml(b.title)}" data-book-author="${escHtml(b.author)}">
+          <span>${escHtml(b.title)}</span>
+          <span class="connect-result-author">${escHtml(b.author)}</span>
+        </div>`
+      ).join('');
+      connectResults.classList.remove('hidden');
+    }, 150);
+  });
+
+  connectResults.addEventListener('click', (e) => {
+    const row = e.target.closest('.connect-result');
+    if (!row) return;
+    const id = row.dataset.bookId;
+    const title = row.dataset.bookTitle;
+    const author = row.dataset.bookAuthor;
+    connectIdEl.value = id;
+    connectInput.value = '';
+    connectResults.classList.add('hidden');
+    connectChip.innerHTML = `<span>${escHtml(title)} — ${escHtml(author)}</span>
+      <button type="button" data-clear-connect="${prefix}">&times;</button>`;
+    connectChip.classList.remove('hidden');
+  });
+
+  // Close results on outside click
+  document.addEventListener('click', (e) => {
+    if (!connectWrap.contains(e.target)) connectResults.classList.add('hidden');
+  });
+}
+
+// ── Event delegation ────────────────────────────────────────────────────────
+
+document.addEventListener('click', async (e) => {
+  // Clear connection chip
+  const clearBtn = e.target.closest('[data-clear-connect]');
+  if (clearBtn) {
+    const prefix = clearBtn.dataset.clearConnect;
+    document.getElementById(`${prefix}-connect-id`).value = '';
+    const chip = document.getElementById(`${prefix}-connect-chip`);
+    chip.innerHTML = '';
+    chip.classList.add('hidden');
     return;
   }
 
-  document.getElementById('notes-list').innerHTML = notes.map(renderNote).join('');
+  // Add note button
+  if (e.target.id === 'add-note-btn') {
+    await handleAddNote();
+    return;
+  }
+
+  // Edit note
+  const editBtn = e.target.closest('[data-edit-note]');
+  if (editBtn) {
+    handleEditStart(Number(editBtn.dataset.editNote));
+    return;
+  }
+
+  // Delete note
+  const deleteBtn = e.target.closest('[data-delete-note]');
+  if (deleteBtn) {
+    await handleDelete(Number(deleteBtn.dataset.deleteNote));
+    return;
+  }
+
+  // Save edited note
+  const saveBtn = e.target.closest('[data-save-note]');
+  if (saveBtn) {
+    await handleEditSave(Number(saveBtn.dataset.saveNote));
+    return;
+  }
+
+  // Cancel edit
+  const cancelBtn = e.target.closest('[data-cancel-edit]');
+  if (cancelBtn) {
+    handleEditCancel(Number(cancelBtn.dataset.cancelEdit));
+    return;
+  }
+});
+
+// ── Add note handler ────────────────────────────────────────────────────────
+
+async function handleAddNote() {
+  const prefix = 'nf-add';
+  const values = getFormValues(prefix);
+  hideFormError(prefix);
+
+  if (!values.content) {
+    showFormError(prefix, 'Note content cannot be empty.');
+    return;
+  }
+
+  const btn = document.getElementById('add-note-btn');
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
+
+  try {
+    const resp = await fetch(`${apiBase}/api/books/${bookId}/notes`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed to add note.');
+
+    // Fetch the new note to get full data (with connected_book enrichment)
+    const notesResp = await fetch(`${apiBase}/api/books/${bookId}/notes`);
+    const notesData = await notesResp.json();
+    currentNotes = notesData.notes || [];
+    renderNotes(currentNotes);
+
+    // Flash the new note
+    const newNoteEl = document.querySelector(`[data-note-id="${data.id}"]`);
+    if (newNoteEl) newNoteEl.classList.add('note-added');
+
+    // Reset form
+    document.getElementById(`${prefix}-content`).value = '';
+    document.getElementById(`${prefix}-location`).value = '';
+    document.getElementById(`${prefix}-connect-id`).value = '';
+    document.getElementById(`${prefix}-tags`).value = '';
+    const chip = document.getElementById(`${prefix}-connect-chip`);
+    chip.innerHTML = '';
+    chip.classList.add('hidden');
+    document.getElementById(`${prefix}-type`).value = 'thought';
+    document.getElementById(`${prefix}-content`).placeholder = PLACEHOLDERS.thought;
+    document.getElementById(`${prefix}-connect-wrap`).classList.add('hidden');
+    document.getElementById(`${prefix}-tags-wrap`).classList.add('hidden');
+    document.getElementById(`${prefix}-tags-toggle`).textContent = '+ Add tags';
+  } catch (err) {
+    showFormError(prefix, err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '+ Add note';
+  }
 }
+
+// ── Edit note handlers ──────────────────────────────────────────────────────
+
+function handleEditStart(noteId) {
+  const note = currentNotes.find(n => n.id === noteId);
+  if (!note) return;
+
+  const noteEl = document.querySelector(`[data-note-id="${noteId}"]`);
+  if (!noteEl) return;
+
+  const connectedBook = note.connected_book || null;
+
+  noteEl.querySelector('.note-display').style.display = 'none';
+  const actionsEl = noteEl.querySelector('.note-actions');
+  if (actionsEl) actionsEl.style.display = 'none';
+
+  // Insert inline edit form
+  let editWrap = noteEl.querySelector('.note-edit-form');
+  if (!editWrap) {
+    editWrap = document.createElement('div');
+    editWrap.className = 'note-edit-form';
+    noteEl.appendChild(editWrap);
+  }
+  editWrap.innerHTML = `
+    ${buildNoteFormHtml({
+      formId: `edit-${noteId}`,
+      noteType: note.note_type,
+      content: note.content,
+      pageOrLocation: note.page_or_location || '',
+      connectedId: note.connected_source_id,
+      connectedBook,
+      tags: note.tags || [],
+    })}
+    <div class="btn-row">
+      <button class="btn btn-secondary" data-cancel-edit="${noteId}">Cancel</button>
+      <button class="btn btn-primary" data-save-note="${noteId}">Save</button>
+    </div>`;
+  editWrap.style.display = '';
+
+  setupFormInteractions(`nf-edit-${noteId}`);
+}
+
+function handleEditCancel(noteId) {
+  const noteEl = document.querySelector(`[data-note-id="${noteId}"]`);
+  if (!noteEl) return;
+  noteEl.querySelector('.note-display').style.display = '';
+  const actionsEl = noteEl.querySelector('.note-actions');
+  if (actionsEl) actionsEl.style.display = '';
+  const editWrap = noteEl.querySelector('.note-edit-form');
+  if (editWrap) editWrap.style.display = 'none';
+}
+
+async function handleEditSave(noteId) {
+  const prefix = `nf-edit-${noteId}`;
+  const values = getFormValues(prefix);
+  hideFormError(prefix);
+
+  if (!values.content) {
+    showFormError(prefix, 'Note content cannot be empty.');
+    return;
+  }
+
+  const saveBtn = document.querySelector(`[data-save-note="${noteId}"]`);
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving...';
+
+  try {
+    const resp = await fetch(`${apiBase}/api/books/${bookId}/notes/${noteId}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed to update note.');
+
+    // Re-fetch notes to get updated data
+    const notesResp = await fetch(`${apiBase}/api/books/${bookId}/notes`);
+    const notesData = await notesResp.json();
+    currentNotes = notesData.notes || [];
+    renderNotes(currentNotes);
+  } catch (err) {
+    showFormError(prefix, err.message);
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save';
+  }
+}
+
+// ── Delete note handler ─────────────────────────────────────────────────────
+
+async function handleDelete(noteId) {
+  if (!confirm('Delete this note?')) return;
+
+  try {
+    const resp = await fetch(`${apiBase}/api/books/${bookId}/notes/${noteId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${getToken()}` },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed to delete note.');
+
+    currentNotes = currentNotes.filter(n => n.id !== noteId);
+    const noteEl = document.querySelector(`[data-note-id="${noteId}"]`);
+    if (noteEl) noteEl.remove();
+    updateNotesTitle();
+
+    if (!currentNotes.length) {
+      document.getElementById('notes-list').innerHTML =
+        `<p class="notes-empty">No notes yet. Add your first note below.</p>`;
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// ── Meta tags ───────────────────────────────────────────────────────────────
 
 function updateMeta(book, noteCount) {
   document.title = `${book.title} — Xinyu's Bookshelf`;
@@ -309,6 +818,8 @@ function updateMeta(book, noteCount) {
     document.querySelector('meta[property="og:image"]').setAttribute('content', book.cover_url);
   }
 }
+
+// ── Load page ───────────────────────────────────────────────────────────────
 
 async function loadPage() {
   if (!bookId) {
@@ -325,7 +836,7 @@ async function loadPage() {
     const booksData = await booksResp.json();
     if (!booksResp.ok) throw new Error(booksData.detail || 'Failed to load books');
 
-    const allBooks = [
+    allBooks = [
       ...(booksData.books.read || []),
       ...(booksData.books.currently_reading || []),
       ...(booksData.books.to_read || []),
@@ -345,6 +856,7 @@ async function loadPage() {
     renderHero(book);
     renderReview(book);
     renderNotes(notes);
+    renderAddNoteForm();
     updateMeta(book, notes.length);
 
     document.getElementById('loading').style.display = 'none';
