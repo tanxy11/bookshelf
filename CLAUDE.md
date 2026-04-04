@@ -11,6 +11,7 @@ make llm             # data/books.json → data/llm_cache.json (legacy, skips if
 make llm-force       # Always regenerate LLM outputs (legacy)
 make build           # parse + llm (legacy pipeline)
 make dev             # Run FastAPI (port 8001) + static site (port 8000) locally
+make add-notes-table # Create notes table in SQLite DB (idempotent)
 .venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --provider gemini
                      # Refresh only Gemini recommendations
 ```
@@ -42,6 +43,7 @@ make seed-staging    # SSH: copy prod DB → staging DB on VPS
 - **SQLite** (`data/bookshelf.db`) is the canonical data store when `DB_PATH` is set. Falls back to JSON files otherwise.
 - `db.py` — SQLite schema, connection factory (WAL mode), numbered migration system. Migrations run automatically on API startup.
 - `scripts/migrate_json_to_sqlite.py` — one-time migration from `books.json` + `llm_cache.json` → SQLite
+- `scripts/add_notes_table.py` — idempotent migration that creates the `notes` table (run via `make add-notes-table`)
 
 **Data pipeline (build-time, legacy):**
 1. `scripts/parse_goodreads.py` — parses Goodreads CSV export → `data/books.json`
@@ -50,9 +52,11 @@ make seed-staging    # SSH: copy prod DB → staging DB on VPS
 **Runtime:**
 - `api/main.py` — FastAPI server; reads from SQLite via `BookshelfDB` (or JSON via `BookshelfStore` as fallback)
 - `api/auth.py` — Bearer token auth; checks `auth_tokens` table in SQLite, falls back to `BOOKSHELF_AUTH_TOKEN` env var
+- `api/notes.py` — Notes CRUD endpoints (`GET`/`POST`/`PUT`/`DELETE` on `/api/books/{id}/notes`)
 - `api/google_books.py` — Google Books API search for the lookup endpoint
 - `api/sync.py` — Goodreads RSS sync (deprecated, returns 410)
-- `site/index.html` — single-file frontend (vanilla JS + embedded CSS); fetches `/api/*` endpoints
+- `site/index.html` — single-file frontend (vanilla JS + embedded CSS); fetches `/api/*` endpoints; clicking a book navigates to its detail page
+- `site/book.html` — individual book detail page with notes display and inline note add/edit/delete (auth required for writes)
 - `site/add.html` — add book form with Google Books lookup
 - `site/edit.html` — edit book form with delete
 
@@ -105,15 +109,19 @@ Loaded automatically from `.env` at repo root via `load_env_file()`. See `.env.e
 ## API Endpoints
 
 ```
-GET    /api/books              # All shelves + stats
+GET    /api/books              # All shelves + stats (includes note_count per book)
 GET    /api/taste-profile      # Anthropic-generated reading taste analysis
 GET    /api/recommendations    # Anthropic + OpenAI + Gemini book recommendations
 GET    /api/health             # Server status + data availability flags + data_backend (sqlite/json)
 GET    /api/lookup?q=...       # Google Books metadata search
 GET    /api/llm-status         # LLM regeneration status (idle/running)
+GET    /api/books/{id}/notes   # All notes for a book (public)
 POST   /api/books              # Add a book (auth required, SQLite only)
 PUT    /api/books/{id}         # Update a book (auth required, SQLite only)
 DELETE /api/books/{id}         # Delete a book (auth required, SQLite only)
+POST   /api/books/{id}/notes   # Add a note (auth required)
+PUT    /api/books/{id}/notes/{note_id}    # Update a note (auth required)
+DELETE /api/books/{id}/notes/{note_id}    # Delete a note (auth required)
 POST   /api/llm/regenerate     # Trigger async LLM regeneration (auth required)
 POST   /api/sync               # Deprecated (returns 410 Gone)
 ```
@@ -126,3 +134,4 @@ POST   /api/sync               # Deprecated (returns 410 Gone)
 - **Title cleaning**: Goodreads titles like `"Dune (Dune #1)"` are stripped to `"Dune"` during CSV parse.
 - **Auth**: Write endpoints require `Authorization: Bearer <token>`. Tokens are stored as SHA-256 hashes in the `auth_tokens` table. The env var `BOOKSHELF_AUTH_TOKEN` is a fallback when no SQLite DB is available.
 - **LLM regeneration**: Write operations on the "read" shelf automatically trigger async LLM regeneration. An `asyncio.Lock` prevents concurrent runs.
+- **Notes**: Per-book notes stored in the `notes` table with types: `thought`, `quote`, `connection`, `disagreement`, `question`. Tags stored as JSON array strings. Connection notes can link to another book via `connected_source_id`. The `source_type` field is always `'book'` for now (future-proofed for other content types). Notes do NOT trigger LLM regeneration.

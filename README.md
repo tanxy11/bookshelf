@@ -8,8 +8,9 @@ Personal reading site for [book.tanxy.net](https://book.tanxy.net), built from a
 - Generates a build-time taste profile from the read shelf
 - Generates three-way AI Picks (recommendations) from Anthropic, OpenAI, and Gemini, using reviews as primary signal; can surface books already on the to-read shelf
 - Serves everything through a small FastAPI backend
-- Renders a single-file frontend with search, filters, sort controls, and expandable book cards
+- Renders a single-file frontend with search, filters, sort controls, and clickable book cards
 - Supports adding and editing books directly through the site (auth required)
+- Per-book notes system with typed notes (thoughts, quotes, connections, disagreements, questions) viewable on individual book detail pages
 
 ## Project structure
 
@@ -18,6 +19,7 @@ bookshelf/
 ├── api/
 │   ├── main.py               # FastAPI app (read + CRUD + LLM endpoints)
 │   ├── auth.py                # Bearer token auth (SQLite + env var fallback)
+│   ├── notes.py               # Notes CRUD endpoints
 │   ├── google_books.py        # Google Books API lookup
 │   └── requirements.txt
 ├── data/
@@ -33,11 +35,13 @@ bookshelf/
 │   ├── nginx.staging.conf
 │   └── staging.env.example
 ├── scripts/
+│   ├── add_notes_table.py        # Notes table migration (idempotent)
 │   ├── generate_llm.py
 │   ├── migrate_json_to_sqlite.py
 │   └── parse_goodreads.py
 ├── site/
-│   ├── index.html             # Main frontend
+│   ├── index.html             # Main frontend (click book → detail page)
+│   ├── book.html              # Book detail page with notes
 │   ├── add.html               # Add book form
 │   └── edit.html              # Edit book form
 ├── bookshelf_data.py
@@ -104,6 +108,7 @@ That serves:
 ```bash
 make install               # create .venv and install api dependencies
 make dev                   # run FastAPI + static site locally
+make add-notes-table       # create notes table in SQLite DB (idempotent)
 make parse                 # CSV → data/books.json (legacy)
 make llm                   # data/books.json → data/llm_cache.json (legacy, skips if unchanged)
 make llm-force             # always regenerate LLM outputs (legacy)
@@ -158,15 +163,19 @@ make seed-staging          # copy prod DB → staging DB on VPS
 ## API
 
 ```
-GET    /api/books              # All shelves + stats
+GET    /api/books              # All shelves + stats (includes note_count per book)
 GET    /api/taste-profile      # Anthropic-generated reading taste analysis
 GET    /api/recommendations    # Three-way Anthropic + OpenAI + Gemini recommendations
 GET    /api/health             # Server status + data backend (sqlite/json)
 GET    /api/lookup?q=...       # Google Books metadata search
 GET    /api/llm-status         # LLM regeneration status (idle/running)
+GET    /api/books/{id}/notes   # All notes for a book (public)
 POST   /api/books              # Add a book (auth required)
 PUT    /api/books/{id}         # Update a book (auth required)
 DELETE /api/books/{id}         # Delete a book (auth required)
+POST   /api/books/{id}/notes   # Add a note (auth required)
+PUT    /api/books/{id}/notes/{note_id}    # Update a note (auth required)
+DELETE /api/books/{id}/notes/{note_id}    # Delete a note (auth required)
 POST   /api/llm/regenerate     # Trigger async LLM regeneration (auth required)
 ```
 
