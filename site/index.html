@@ -814,6 +814,14 @@
       line-height: 1.55;
     }
 
+    .hovercard-link {
+      display: block;
+      margin-top: 10px;
+      font-size: .78rem;
+      color: var(--accent-deep);
+    }
+    .hovercard-link:hover { text-decoration: underline; }
+
     .currently-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
@@ -1540,6 +1548,7 @@ function buildHovercardContent(card) {
     ${shelvesHtml}
     ${reviewHtml}
     ${notesHtml}
+    ${card.dataset.id ? `<a href="/book?id=${escHtml(card.dataset.id)}" class="hovercard-link" onclick="event.stopPropagation()">&rarr; View full page &amp; notes</a>` : ''}
   `;
 }
 
