@@ -113,6 +113,13 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(payload["has_taste_profile"])
         self.assertTrue(payload["has_recommendations"])
 
+    def test_activity_endpoint_returns_empty_on_json_backend(self):
+        response = self.client.get("/api/activity")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["items"], [])
+        self.assertFalse(payload["pagination"]["has_more"])
+
     def test_sync_endpoint_returns_410_gone(self):
         response = self.client.post("/api/sync")
         self.assertEqual(response.status_code, 410)

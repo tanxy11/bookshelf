@@ -65,6 +65,18 @@
 
     a { color: var(--accent-deep); text-decoration: none; }
 
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     .container {
       max-width: 1380px;
       margin: 0 auto;
@@ -78,11 +90,26 @@
     }
 
     header .container {
+      padding: 0 24px;
+    }
+
+    .masthead {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 20px;
+      gap: 12px;
+    }
+
+    .masthead-nav-row {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .hero-band {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
       align-items: start;
-      padding: 20px 24px 22px;
+      padding: 18px 24px 16px;
       border: 1px solid var(--border);
       border-radius: 24px;
       background:
@@ -92,7 +119,7 @@
       overflow: hidden;
     }
 
-    header .container::before {
+    .hero-band::before {
       content: "";
       position: absolute;
       inset: auto -60px -90px auto;
@@ -107,7 +134,7 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 10px;
+      margin-bottom: 9px;
       padding: 5px 10px;
       border: 1px solid rgba(122, 92, 62, 0.18);
       border-radius: 999px;
@@ -139,10 +166,16 @@
 
     .site-subtitle {
       margin-top: 8px;
-      max-width: 52ch;
+      max-width: 56ch;
       color: var(--muted);
       font-size: .92rem;
       line-height: 1.65;
+    }
+
+    .hero-copy {
+      min-width: 0;
+      align-self: start;
+      padding-right: 0;
     }
 
     nav {
@@ -171,6 +204,110 @@
       background: rgba(122, 92, 62, 0.08);
       color: var(--accent-deep);
       transform: translateY(-1px);
+    }
+
+    .hero-nav {
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .activity-preview {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+      width: 100%;
+      padding-top: 18px;
+      padding-bottom: 4px;
+      border-top: 1px solid rgba(122, 92, 62, 0.1);
+    }
+
+    .activity-preview-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .activity-item {
+      min-width: 0;
+      padding-left: 20px;
+      border-left: 1px solid rgba(122, 92, 62, 0.06);
+      position: relative;
+    }
+
+    .activity-item:first-child {
+      padding-left: 14px;
+      border-left: none;
+    }
+
+    .activity-dot {
+      position: absolute;
+      left: -2px;
+      top: 8px;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.75;
+    }
+
+    .activity-item:first-child .activity-dot {
+      left: 0;
+    }
+
+    .activity-dot.is-finished { background: var(--accent); }
+    .activity-dot.is-started { background: var(--olive); }
+    .activity-dot.is-queued { background: var(--rose); }
+
+    .activity-item-title {
+      color: var(--text);
+      font-size: .9rem;
+      font-weight: 500;
+      line-height: 1.55;
+    }
+
+    a.activity-item-title {
+      color: var(--accent-deep);
+    }
+
+    a.activity-item-title:hover {
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .activity-item-time {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: .69rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .activity-preview-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      justify-self: end;
+      align-self: start;
+      margin-top: 4px;
+      color: rgba(95, 67, 41, 0.86);
+      font-size: .78rem;
+      font-weight: 600;
+      white-space: nowrap;
+      letter-spacing: .01em;
+    }
+
+    .activity-preview-link:hover {
+      transform: translateX(1px);
+    }
+
+    .activity-preview-empty {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      font-size: .84rem;
+      line-height: 1.55;
+      padding-top: 2px;
     }
 
     .section { padding: 10px 0; }
@@ -1014,8 +1151,26 @@
     }
 
     @media (max-width: 980px) {
-      header .container {
+      .masthead-nav-row {
+        justify-content: flex-start;
+      }
+
+      .hero-copy {
+        align-self: start;
+      }
+
+      .activity-preview {
         grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .activity-preview-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .activity-preview-link {
+        justify-self: start;
       }
 
       nav { justify-content: flex-start; }
@@ -1033,6 +1188,17 @@
       }
       .site-title { font-size: 2.3rem; }
       nav { display: none; }
+      .activity-preview {
+        width: 100%;
+        padding-top: 14px;
+      }
+      .activity-preview-list {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .activity-item {
+        padding-left: 14px;
+      }
       .book-wall { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
       .currently-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
       .search-input { max-width: 100%; }
@@ -1223,20 +1389,31 @@
 </div>
 
 <header>
-  <div class="container">
-    <div>
-      <p class="site-kicker">Personal Library Archive</p>
-      <h1 class="site-title">Xinyu’s Bookshelf</h1>
-      <p class="site-subtitle">What I’ve been reading, what’s still open, and the patterns that start to appear when the shelf gets large enough.</p>
+  <div class="container masthead">
+    <div class="masthead-nav-row">
+      <nav class="hero-nav">
+        <a href="#reading-weeks">Life in weeks</a>
+        <a href="#taste-profile">Taste profile</a>
+        <a href="#read">Books read</a>
+        <a href="#currently-reading">Reading</a>
+        <a href="#to-read">Want to read</a>
+        <a href="#recommendations">AI picks</a>
+      </nav>
     </div>
-    <nav>
-      <a href="#reading-weeks">Life in weeks</a>
-      <a href="#taste-profile">Taste profile</a>
-      <a href="#read">Books read</a>
-      <a href="#currently-reading">Reading</a>
-      <a href="#to-read">Want to read</a>
-      <a href="#recommendations">AI picks</a>
-    </nav>
+    <div class="hero-band">
+      <div class="hero-copy">
+        <p class="site-kicker">Personal Library Archive</p>
+        <h1 class="site-title">Xinyu’s Bookshelf</h1>
+        <p class="site-subtitle">What I’ve been reading, what’s still open, and the patterns that start to appear when the shelf gets large enough.</p>
+      </div>
+      <aside class="activity-preview" aria-labelledby="activity-preview-title">
+        <h2 class="sr-only" id="activity-preview-title">Recent activity</h2>
+        <div class="activity-preview-list" id="activity-preview-list">
+          <p class="activity-preview-empty">Loading the latest movement on the shelf…</p>
+        </div>
+        <a class="activity-preview-link" href="log.html">View log →</a>
+      </aside>
+    </div>
   </div>
 </header>
 
@@ -1427,6 +1604,29 @@ function formatLongDate(d) {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+function parseDate(value, isDateOnly = false) {
+  if (!value) return null;
+  const date = new Date(isDateOnly ? `${value}T12:00:00` : value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatRelativeDate(value, isDateOnly = false) {
+  const date = parseDate(value, isDateOnly);
+  if (!date) return '';
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.floor(diffMs / dayMs);
+
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)} week${Math.floor(days / 7) === 1 ? '' : 's'} ago`;
+  if (days < 365) return `${Math.floor(days / 30)} month${Math.floor(days / 30) === 1 ? '' : 's'} ago`;
+  return `${Math.floor(days / 365)} year${Math.floor(days / 365) === 1 ? '' : 's'} ago`;
+}
+
 function escHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
@@ -1434,6 +1634,32 @@ function escHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function activityClass(eventType) {
+  if (eventType === 'started_reading') return 'is-started';
+  if (eventType === 'book_added_to_to_read') return 'is-queued';
+  return '';
+}
+
+function renderActivityPreview(payload) {
+  const list = document.getElementById('activity-preview-list');
+  const items = Array.isArray(payload && payload.items) ? payload.items : [];
+
+  if (!items.length) {
+    list.innerHTML = '<p class="activity-preview-empty">No recent movement yet. The archive is quiet for now.</p>';
+    return;
+  }
+
+  list.innerHTML = items.map(item => `
+    <article class="activity-item">
+      <span class="activity-dot ${activityClass(item.event_type)}" aria-hidden="true"></span>
+      ${item.book && item.book.href
+        ? `<a class="activity-item-title" href="${escHtml(item.book.href)}">${escHtml(item.summary)}</a>`
+        : `<p class="activity-item-title">${escHtml(item.summary)}</p>`}
+      <p class="activity-item-time">${escHtml(formatRelativeDate(item.created_at))}</p>
+    </article>
+  `).join('');
 }
 
 function buildCoverHtml(book) {
@@ -1900,11 +2126,12 @@ async function fetchJson(url) {
 }
 
 async function load() {
-  const [booksResult, tasteResult, recommendationsResult, healthResult] = await Promise.allSettled([
+  const [booksResult, tasteResult, recommendationsResult, healthResult, activityResult] = await Promise.allSettled([
     fetchJson('/api/books'),
     fetchJson('/api/taste-profile'),
     fetchJson('/api/recommendations'),
     fetchJson('/api/health'),
+    fetchJson('/api/activity?limit=3'),
   ]);
 
   if (booksResult.status !== 'fulfilled') {
@@ -1924,6 +2151,7 @@ async function load() {
   const { books, stats, generated_at } = data;
 
   allReadBooks = books.read || [];
+  renderActivityPreview(activityResult.status === 'fulfilled' ? activityResult.value : { items: [] });
   buildShelfTags(allReadBooks);
   applyHash();
   renderReadGrid();

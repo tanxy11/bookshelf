@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reading Log — Xinyu's Bookshelf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f4efe6;
+      --surface: rgba(255, 251, 245, 0.84);
+      --surface-strong: #fffaf3;
+      --border: rgba(122, 92, 62, 0.16);
+      --muted: #7c7267;
+      --text: #261f18;
+      --accent: #7a5c3e;
+      --accent-deep: #5f4329;
+      --olive: #5e6954;
+      --rose: #8c5d58;
+      --shadow-soft: 0 18px 50px rgba(61, 42, 22, 0.08);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(255, 248, 238, 0.94), transparent 34%),
+        linear-gradient(180deg, #f8f4ed 0%, var(--bg) 35%, #efe7da 100%);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a { color: var(--accent-deep); text-decoration: none; }
+    a:hover { color: var(--accent); }
+
+    .hidden { display: none !important; }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .back {
+      display: inline-block;
+      margin-bottom: 16px;
+      color: var(--muted);
+      font-size: .84rem;
+    }
+
+    .hero,
+    .log-shell {
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background:
+        linear-gradient(180deg, rgba(255, 252, 247, 0.9), rgba(247, 240, 230, 0.8)),
+        var(--surface-strong);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .hero {
+      padding: 24px;
+      margin-bottom: 12px;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 5px 10px;
+      border: 1px solid rgba(122, 92, 62, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 250, 242, 0.75);
+      color: var(--accent-deep);
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    h1 {
+      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      line-height: .96;
+      letter-spacing: -.04em;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      margin-top: 10px;
+      max-width: 54ch;
+      color: var(--muted);
+      font-size: .94rem;
+    }
+
+    .log-shell {
+      padding: 16px 20px 18px;
+    }
+
+    .log-list {
+      display: grid;
+      gap: 0;
+    }
+
+    .log-item {
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr);
+      gap: 12px;
+      padding: 18px 0;
+      border-top: 1px solid rgba(122, 92, 62, 0.08);
+    }
+
+    .log-item:first-child {
+      border-top: none;
+      padding-top: 4px;
+    }
+
+    .log-dot {
+      width: 6px;
+      height: 6px;
+      margin-top: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.78;
+    }
+
+    .log-dot.is-started { background: var(--olive); }
+    .log-dot.is-queued { background: var(--rose); }
+
+    .log-summary {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    a.log-summary {
+      color: var(--accent-deep);
+    }
+
+    a.log-summary:hover {
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .log-time {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: .74rem;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+
+    .empty,
+    .error {
+      padding: 6px 0 2px;
+      color: var(--muted);
+    }
+
+    .error { color: var(--rose); }
+
+    .load-more-wrap {
+      display: flex;
+      justify-content: center;
+      padding-top: 16px;
+    }
+
+    .btn {
+      padding: 10px 18px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--accent-deep);
+      font: inherit;
+      font-size: .84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .18s ease, transform .18s ease;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: rgba(122, 92, 62, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+      transform: none;
+    }
+
+    @media (max-width: 640px) {
+      .container {
+        padding: 18px;
+      }
+
+      .hero,
+      .log-shell {
+        border-radius: 20px;
+      }
+
+      .hero {
+        padding: 20px 18px;
+      }
+
+      .log-shell {
+        padding: 14px 16px 16px;
+      }
+
+      .log-item {
+        grid-template-columns: 12px minmax(0, 1fr);
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a class="back" href="index.html">&larr; Back to bookshelf</a>
+
+    <section class="hero">
+      <p class="kicker">Reading Log</p>
+      <h1>What changed on the shelf</h1>
+      <p class="subtitle">A running record of new books, shelf moves, and notes as they happen.</p>
+    </section>
+
+    <section class="log-shell" aria-labelledby="log-title">
+      <h2 id="log-title" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">Reading log entries</h2>
+      <div class="log-list" id="log-list">
+        <p class="empty">Loading the latest movement on the shelf…</p>
+      </div>
+      <div class="load-more-wrap">
+        <button class="btn hidden" id="load-more-btn" type="button">Load more</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const localApiPort = location.port === '8010' ? '8011' : '8001';
+    const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
+    const state = { limit: 30, offset: 0, hasMore: false, loading: false };
+
+    function escHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatAbsoluteDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    }
+
+    function itemClass(eventType) {
+      if (eventType === 'started_reading') return 'is-started';
+      if (eventType === 'book_added_to_to_read') return 'is-queued';
+      return '';
+    }
+
+    function renderItems(items, append = false) {
+      const list = document.getElementById('log-list');
+      if (!append) list.innerHTML = '';
+
+      if (!append && !items.length) {
+        list.innerHTML = '<p class="empty">No recent changes yet. The log will start filling as new activity happens.</p>';
+        return;
+      }
+
+      const html = items.map(item => `
+        <article class="log-item">
+          <span class="log-dot ${itemClass(item.event_type)}" aria-hidden="true"></span>
+          <div>
+            ${item.book && item.book.href
+              ? `<a class="log-summary" href="${escHtml(item.book.href)}">${escHtml(item.summary)}</a>`
+              : `<p class="log-summary">${escHtml(item.summary)}</p>`}
+            <p class="log-time">${escHtml(formatAbsoluteDate(item.created_at))}</p>
+          </div>
+        </article>
+      `).join('');
+
+      if (append) list.insertAdjacentHTML('beforeend', html);
+      else list.innerHTML = html;
+    }
+
+    function setLoadMoreVisible(visible) {
+      document.getElementById('load-more-btn').classList.toggle('hidden', !visible);
+    }
+
+    async function fetchPage(offset, append = false) {
+      if (state.loading) return;
+      state.loading = true;
+      const button = document.getElementById('load-more-btn');
+      button.disabled = true;
+
+      try {
+        const response = await fetch(`${apiBase}/api/activity?limit=${state.limit}&offset=${offset}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        renderItems(payload.items || [], append);
+        state.offset = payload.pagination && typeof payload.pagination.next_offset === 'number'
+          ? payload.pagination.next_offset
+          : offset + (payload.items || []).length;
+        state.hasMore = Boolean(payload.pagination && payload.pagination.has_more);
+        setLoadMoreVisible(state.hasMore);
+      } catch (error) {
+        if (!append) {
+          document.getElementById('log-list').innerHTML =
+            `<p class="error">Could not load the reading log right now.</p>`;
+        }
+      } finally {
+        state.loading = false;
+        button.disabled = false;
+      }
+    }
+
+    document.getElementById('load-more-btn').addEventListener('click', () => {
+      fetchPage(state.offset, true);
+    });
+
+    fetchPage(0);
+  </script>
+</body>
+</html>

@@ -17,6 +17,7 @@ from bookshelf_data import (
     load_env_file,
     utc_now_iso,
 )
+from api.activity import router as activity_router
 from api.auth import verify_auth
 from api.notes import router as notes_router
 
@@ -49,6 +50,7 @@ else:
     store = BookshelfStore(BOOKS_DATA_FILE, LLM_CACHE_FILE)
 
 app = FastAPI(title="Bookshelf API")
+app.include_router(activity_router)
 app.include_router(notes_router)
 app.add_middleware(
     CORSMiddleware,
@@ -89,6 +91,39 @@ def _normalize_shelves(value: object) -> list[str]:
         seen.add(key)
         normalized.append(tag)
     return normalized
+
+
+def _created_book_activity_type(shelf: str) -> str | None:
+    return {
+        "to_read": "book_added_to_to_read",
+        "currently_reading": "started_reading",
+        "read": "finished_reading",
+    }.get(shelf)
+
+
+def _transition_book_activity_type(old_shelf: str, new_shelf: str) -> str | None:
+    if old_shelf == new_shelf:
+        return None
+    if new_shelf == "currently_reading":
+        return "started_reading"
+    if new_shelf == "read":
+        return "finished_reading"
+    return None
+
+
+def _log_book_activity(conn, *, event_type: str | None, book: dict) -> None:
+    if not event_type:
+        return
+
+    from db import insert_activity
+
+    insert_activity(
+        conn,
+        event_type=event_type,
+        book_id=book["id"],
+        book_title=book.get("title") or "Untitled",
+        book_author=book.get("author") or "Unknown author",
+    )
 
 
 # ── LLM regeneration state ──────────────────────────────────────────────────
@@ -196,7 +231,7 @@ async def create_book(request: Request) -> dict:
     if not title or not author:
         raise HTTPException(status_code=422, detail="title and author are required.")
 
-    from db import insert_book
+    from db import get_book_by_id, insert_book
 
     shelf = body.get("exclusive_shelf", "to_read")
     shelves = _normalize_shelves(body.get("shelves"))
@@ -218,12 +253,20 @@ async def create_book(request: Request) -> dict:
         "goodreads_id": body.get("goodreads_id") or None,
     }
 
-    book_id = insert_book(store.conn(), book_data)
-    store.conn().commit()
-    _maybe_trigger_llm_regen(shelf)
+    conn = store.conn()
+    try:
+        book_id = insert_book(conn, book_data)
+        book = get_book_by_id(conn, book_id)
+        if book is None:
+            raise HTTPException(status_code=500, detail="Book was created but could not be loaded.")
+        _log_book_activity(conn, event_type=_created_book_activity_type(shelf), book=book)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
-    from db import get_book_by_id
-    return get_book_by_id(store.conn(), book_id)
+    _maybe_trigger_llm_regen(shelf)
+    return book
 
 
 @app.put("/api/books/{book_id}")
@@ -245,15 +288,28 @@ async def update_book_endpoint(book_id: int, request: Request) -> dict:
     if "shelves" in body:
         body["shelves"] = _normalize_shelves(body.get("shelves"))
 
-    if not update_book(store.conn(), book_id, body):
-        raise HTTPException(status_code=404, detail="Book not found.")
+    conn = store.conn()
+    try:
+        if not update_book(conn, book_id, body):
+            raise HTTPException(status_code=404, detail="Book not found.")
+        updated = get_book_by_id(conn, book_id)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Book not found.")
+        old_shelf = existing.get("exclusive_shelf", "")
+        new_shelf = updated.get("exclusive_shelf", old_shelf)
+        _log_book_activity(
+            conn,
+            event_type=_transition_book_activity_type(old_shelf, new_shelf),
+            book=updated,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
-    old_shelf = existing.get("exclusive_shelf", "")
-    new_shelf = body.get("exclusive_shelf", old_shelf)
     if old_shelf == "read" or new_shelf == "read":
         _maybe_trigger_llm_regen("read")
-
-    return get_book_by_id(store.conn(), book_id)
+    return updated
 
 
 @app.delete("/api/books/{book_id}")
@@ -269,7 +325,13 @@ async def delete_book_endpoint(book_id: int, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="Book not found.")
 
     shelf = existing.get("exclusive_shelf", "")
-    delete_book(store.conn(), book_id)
+    conn = store.conn()
+    try:
+        delete_book(conn, book_id)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     _maybe_trigger_llm_regen(shelf)
 
     return {"deleted": True, "id": book_id}
