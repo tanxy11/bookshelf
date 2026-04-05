@@ -1241,7 +1241,8 @@
       letter-spacing: -.03em;
       line-height: .96;
       color: rgba(55, 43, 34, 0.96);
-      max-width: 11ch;
+      max-width: none;
+      white-space: nowrap;
     }
 
     .suggest-modal-copy {
@@ -1555,6 +1556,9 @@
       .suggest-modal-shell {
         padding: 18px 16px 16px;
         border-radius: 22px;
+      }
+      .suggest-modal-title {
+        white-space: normal;
       }
       .suggest-form-grid {
         grid-template-columns: 1fr;
