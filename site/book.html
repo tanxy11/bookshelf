@@ -137,22 +137,43 @@
       border-left: 3px solid var(--question-accent); padding-left: 14px;
     }
 
-    /* Connection card */
-    .connected-card {
-      display: inline-flex; align-items: center; gap: 10px;
-      padding: 8px 12px; border-radius: 10px;
-      border: 1px solid var(--border); background: rgba(255,255,255,0.86);
-      margin-bottom: 8px; text-decoration: none; color: var(--text);
-      transition: background .14s;
+    /* Connection reference */
+    .connected-reference {
+      display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px;
+      margin: 1px 0 10px; color: var(--olive); font-size: .88rem; line-height: 1.45;
     }
-    .connected-card:hover { background: var(--accent-soft); }
-    .connected-cover {
-      width: 32px; height: 48px; border-radius: 4px; overflow: hidden;
-      background: var(--bg-wash); flex-shrink: 0;
+    .connected-reference::before {
+      content: "";
+      width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0;
+      background: rgba(104, 115, 93, 0.34); transform: translateY(-1px);
     }
-    .connected-cover img { width: 100%; height: 100%; object-fit: cover; }
-    .connected-title { font-size: .82rem; font-weight: 600; line-height: 1.2; }
-    .connected-author { font-size: .75rem; color: var(--muted); }
+    .connected-reference-title {
+      font-weight: 600;
+      color: rgba(82, 74, 63, 0.92);
+    }
+    a.connected-reference {
+      color: inherit; text-decoration: none;
+    }
+    a.connected-reference .connected-reference-title {
+      border-bottom: 1px solid rgba(120, 86, 65, 0.2);
+      transition: color .14s, border-color .14s;
+    }
+    a.connected-reference:hover .connected-reference-title {
+      color: var(--accent-deep);
+      border-color: rgba(120, 86, 65, 0.38);
+    }
+    .connected-reference-meta {
+      font-size: .81rem; color: var(--muted);
+    }
+    .connected-reference-external {
+      color: var(--accent-deep);
+      border-bottom: 1px solid rgba(120, 86, 65, 0.16);
+      text-decoration: none;
+    }
+    .connected-reference-external:hover {
+      color: var(--accent);
+      border-color: rgba(120, 86, 65, 0.34);
+    }
 
     .note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .note-tag {
@@ -200,6 +221,11 @@
     .note-form select, .note-form input, .note-form textarea {
       width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
       background: rgba(255,255,255,0.88); font-size: .94rem; font-family: inherit; color: var(--text);
+    }
+    .note-form input:disabled {
+      background: rgba(244, 238, 231, 0.9);
+      color: var(--muted);
+      cursor: not-allowed;
     }
     .note-form select:focus, .note-form input:focus, .note-form textarea:focus {
       outline: none; border-color: rgba(122,92,62,0.42); box-shadow: 0 0 0 3px rgba(122,92,62,0.08);
@@ -253,6 +279,12 @@
       cursor: pointer; padding: 0; line-height: 1;
     }
     .connect-chip button:hover { color: var(--accent-deep); }
+    .connect-extra-field { margin-top: 10px; }
+    .field-hint {
+      margin-top: 4px;
+      font-size: .76rem;
+      color: var(--muted);
+    }
 
     /* Tags toggle */
     .tags-toggle {
@@ -308,6 +340,13 @@ let currentNotes = [];
 function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
 function isAuth() { return !!getToken(); }
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function escAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 function stars(rating) {
   let html = '';
@@ -336,7 +375,7 @@ const RESERVED_SHELF_TAGS = new Set(['read', 'currently-reading', 'to-read']);
 const PLACEHOLDERS = {
   thought: 'What stuck with you, what you\'d tell a friend...',
   quote: 'Enter the exact passage...',
-  connection: 'How does this connect to the other book...',
+  connection: 'How does this connect to the other work...',
   disagreement: 'What do you push back on and why...',
   question: 'What\'s left unresolved...',
 };
@@ -385,9 +424,6 @@ function renderNoteHtml(note) {
     disagreement: 'Disagreement', question: 'Question',
   };
   let label = typeLabels[note.note_type] || note.note_type;
-  if (note.note_type === 'connection' && note.connected_book) {
-    label += ` &rarr; ${escHtml(note.connected_book.title)}`;
-  }
   if (note.note_type === 'question') label = '? ' + label;
 
   const locationHtml = note.page_or_location
@@ -397,16 +433,19 @@ function renderNoteHtml(note) {
   let connectedHtml = '';
   if (note.note_type === 'connection' && note.connected_book) {
     const cb = note.connected_book;
-    const coverImg = cb.cover_url
-      ? `<img src="${escHtml(cb.cover_url)}" alt="${escHtml(cb.title)}">` : '';
     connectedHtml = `
-      <a class="connected-card" href="book.html?id=${cb.id}">
-        <div class="connected-cover">${coverImg}</div>
-        <div>
-          <div class="connected-title">${escHtml(cb.title)}</div>
-          <div class="connected-author">${escHtml(cb.author)}</div>
-        </div>
+      <a class="connected-reference" href="book.html?id=${cb.id}">
+        <span class="connected-reference-title">${escHtml(cb.title)}</span>
+        <span class="connected-reference-meta">${escHtml(cb.author)}</span>
       </a>`;
+  } else if (note.note_type === 'connection' && note.connected_label) {
+    const externalTargetHtml = note.connected_url
+      ? `<a class="connected-reference-external" href="${escAttr(note.connected_url)}" target="_blank" rel="noopener noreferrer">${escHtml(note.connected_label)}</a>`
+      : `<span class="connected-reference-title">${escHtml(note.connected_label)}</span>`;
+    connectedHtml = `
+      <div class="connected-reference">
+        ${externalTargetHtml}
+      </div>`;
   }
 
   const tagsHtml = (note.tags && note.tags.length)
@@ -450,13 +489,28 @@ function renderNotes(notes) {
 // ── Note form builder (shared by add & edit) ────────────────────────────────
 
 function buildNoteFormHtml(opts = {}) {
-  const { noteType = 'thought', content = '', pageOrLocation = '', connectedId = null, connectedBook = null, tags = [], formId = 'add' } = opts;
+  const {
+    noteType = 'thought',
+    content = '',
+    pageOrLocation = '',
+    connectedId = null,
+    connectedLabel = '',
+    connectedUrl = '',
+    connectedBook = null,
+    tags = [],
+    formId = 'add',
+  } = opts;
   const prefix = `nf-${formId}`;
   const showConnect = noteType === 'connection';
+  const chipLabel = connectedBook
+    ? `${connectedBook.title} — ${connectedBook.author}`
+    : '';
+  const connectInputValue = chipLabel ? '' : connectedLabel;
+  const connectUrlValue = chipLabel ? '' : connectedUrl;
 
-  const connectedChipHtml = connectedBook
+  const connectedChipHtml = chipLabel
     ? `<div class="connect-chip" id="${prefix}-connect-chip">
-        <span>${escHtml(connectedBook.title)} — ${escHtml(connectedBook.author)}</span>
+        <span>${escHtml(chipLabel)}</span>
         <button type="button" data-clear-connect="${prefix}">&times;</button>
        </div>`
     : `<div class="connect-chip hidden" id="${prefix}-connect-chip"></div>`;
@@ -480,20 +534,25 @@ function buildNoteFormHtml(opts = {}) {
       <div class="note-form-row">
         <div>
           <label for="${prefix}-location">Page / Location</label>
-          <input type="text" id="${prefix}-location" placeholder="p.147, ch.3, etc." value="${escHtml(pageOrLocation || '')}">
+          <input type="text" id="${prefix}-location" placeholder="p.147, ch.3, etc." value="${escAttr(pageOrLocation || '')}">
         </div>
       </div>
       <div class="connect-field${showConnect ? '' : ' hidden'}" id="${prefix}-connect-wrap">
         <label for="${prefix}-connect-input">Connect to</label>
-        <input type="text" id="${prefix}-connect-input" placeholder="Search for a book..." autocomplete="off">
-        <input type="hidden" id="${prefix}-connect-id" value="${connectedId || ''}">
+        <input type="text" id="${prefix}-connect-input" placeholder="Search for a book or type another work..." autocomplete="off" value="${escAttr(connectInputValue || '')}">
+        <input type="hidden" id="${prefix}-connect-id" value="${escAttr(connectedId || '')}">
         <div class="connect-results hidden" id="${prefix}-connect-results"></div>
         ${connectedChipHtml}
+        <div class="connect-extra-field">
+          <label for="${prefix}-connect-url">External link</label>
+          <input type="url" id="${prefix}-connect-url" placeholder="https://example.com" value="${escAttr(connectUrlValue || '')}">
+          <div class="field-hint">Optional for articles, films, music, and other off-site references.</div>
+        </div>
       </div>
       <div>
         <button type="button" class="tags-toggle" id="${prefix}-tags-toggle">${tags.length ? 'Tags' : '+ Add tags'}</button>
         <div class="${tags.length ? '' : 'hidden'}" id="${prefix}-tags-wrap" style="margin-top:6px">
-          <input type="text" id="${prefix}-tags" placeholder="comma-separated, e.g. systems-thinking, emergence" value="${escHtml(tags.join(', '))}">
+          <input type="text" id="${prefix}-tags" placeholder="comma-separated, e.g. systems-thinking, emergence" value="${escAttr(tags.join(', '))}">
         </div>
       </div>
       <div class="form-error hidden" id="${prefix}-error"></div>
@@ -505,6 +564,15 @@ function getFormValues(prefix) {
   const content = document.getElementById(`${prefix}-content`).value.trim();
   const pageOrLocation = document.getElementById(`${prefix}-location`).value.trim() || null;
   const connectedId = document.getElementById(`${prefix}-connect-id`).value || null;
+  const connectTextInput = document.getElementById(`${prefix}-connect-input`);
+  const connectUrlInput = document.getElementById(`${prefix}-connect-url`);
+  const hasInternalConnection = noteType === 'connection' && !!connectedId;
+  const connectedLabel = noteType === 'connection' && !hasInternalConnection
+    ? (connectTextInput.value.trim() || null)
+    : null;
+  const connectedUrl = noteType === 'connection' && !hasInternalConnection
+    ? (connectUrlInput.value.trim() || null)
+    : null;
   const tagsRaw = document.getElementById(`${prefix}-tags`).value;
   const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : null;
 
@@ -512,6 +580,8 @@ function getFormValues(prefix) {
     note_type: noteType,
     content,
     page_or_location: pageOrLocation,
+    connected_label: connectedLabel,
+    connected_url: connectedUrl,
     connected_source_id: connectedId ? Number(connectedId) : null,
     tags: tags && tags.length ? tags : null,
   };
@@ -551,11 +621,20 @@ function setupFormInteractions(prefix) {
   const contentEl = document.getElementById(`${prefix}-content`);
   const connectWrap = document.getElementById(`${prefix}-connect-wrap`);
   const connectInput = document.getElementById(`${prefix}-connect-input`);
+  const connectUrlEl = document.getElementById(`${prefix}-connect-url`);
   const connectResults = document.getElementById(`${prefix}-connect-results`);
   const connectIdEl = document.getElementById(`${prefix}-connect-id`);
   const connectChip = document.getElementById(`${prefix}-connect-chip`);
   const tagsToggle = document.getElementById(`${prefix}-tags-toggle`);
   const tagsWrap = document.getElementById(`${prefix}-tags-wrap`);
+
+  function syncConnectionMode() {
+    const hasInternalConnection = !!connectIdEl.value;
+    connectUrlEl.disabled = hasInternalConnection;
+    if (hasInternalConnection) {
+      connectUrlEl.value = '';
+    }
+  }
 
   // Type change → update placeholder + show/hide connect field
   typeSelect.addEventListener('change', () => {
@@ -565,6 +644,7 @@ function setupFormInteractions(prefix) {
     } else {
       connectWrap.classList.add('hidden');
     }
+    syncConnectionMode();
   });
 
   // Auto-grow textarea
@@ -586,6 +666,12 @@ function setupFormInteractions(prefix) {
   connectInput.addEventListener('input', () => {
     clearTimeout(searchTimeout);
     const q = connectInput.value.trim();
+    if (q) {
+      connectIdEl.value = '';
+      connectChip.innerHTML = '';
+      connectChip.classList.add('hidden');
+      syncConnectionMode();
+    }
     if (q.length < 2) { connectResults.classList.add('hidden'); return; }
     searchTimeout = setTimeout(() => {
       const matches = allBooks
@@ -594,7 +680,7 @@ function setupFormInteractions(prefix) {
         .slice(0, 8);
       if (!matches.length) { connectResults.classList.add('hidden'); return; }
       connectResults.innerHTML = matches.map(b =>
-        `<div class="connect-result" data-book-id="${b.id}" data-book-title="${escHtml(b.title)}" data-book-author="${escHtml(b.author)}">
+        `<div class="connect-result" data-book-id="${b.id}" data-book-title="${escAttr(b.title)}" data-book-author="${escAttr(b.author)}">
           <span>${escHtml(b.title)}</span>
           <span class="connect-result-author">${escHtml(b.author)}</span>
         </div>`
@@ -609,18 +695,22 @@ function setupFormInteractions(prefix) {
     const id = row.dataset.bookId;
     const title = row.dataset.bookTitle;
     const author = row.dataset.bookAuthor;
+    const chipLabel = `${title} — ${author}`;
     connectIdEl.value = id;
     connectInput.value = '';
     connectResults.classList.add('hidden');
-    connectChip.innerHTML = `<span>${escHtml(title)} — ${escHtml(author)}</span>
+    connectChip.innerHTML = `<span>${escHtml(chipLabel)}</span>
       <button type="button" data-clear-connect="${prefix}">&times;</button>`;
     connectChip.classList.remove('hidden');
+    syncConnectionMode();
   });
 
   // Close results on outside click
   document.addEventListener('click', (e) => {
     if (!connectWrap.contains(e.target)) connectResults.classList.add('hidden');
   });
+
+  syncConnectionMode();
 }
 
 // ── Event delegation ────────────────────────────────────────────────────────
@@ -631,6 +721,9 @@ document.addEventListener('click', async (e) => {
   if (clearBtn) {
     const prefix = clearBtn.dataset.clearConnect;
     document.getElementById(`${prefix}-connect-id`).value = '';
+    document.getElementById(`${prefix}-connect-input`).value = '';
+    const urlInput = document.getElementById(`${prefix}-connect-url`);
+    if (urlInput) urlInput.disabled = false;
     const chip = document.getElementById(`${prefix}-connect-chip`);
     chip.innerHTML = '';
     chip.classList.add('hidden');
@@ -683,6 +776,10 @@ async function handleAddNote() {
     showFormError(prefix, 'Note content cannot be empty.');
     return;
   }
+  if (values.note_type === 'connection' && !values.connected_source_id && !values.connected_label) {
+    showFormError(prefix, 'Choose a book or type what this note connects to.');
+    return;
+  }
 
   const btn = document.getElementById('add-note-btn');
   btn.disabled = true;
@@ -711,6 +808,10 @@ async function handleAddNote() {
     document.getElementById(`${prefix}-content`).value = '';
     document.getElementById(`${prefix}-location`).value = '';
     document.getElementById(`${prefix}-connect-id`).value = '';
+    document.getElementById(`${prefix}-connect-input`).value = '';
+    const connectUrl = document.getElementById(`${prefix}-connect-url`);
+    connectUrl.value = '';
+    connectUrl.disabled = false;
     document.getElementById(`${prefix}-tags`).value = '';
     const chip = document.getElementById(`${prefix}-connect-chip`);
     chip.innerHTML = '';
@@ -757,6 +858,8 @@ function handleEditStart(noteId) {
       content: note.content,
       pageOrLocation: note.page_or_location || '',
       connectedId: note.connected_source_id,
+      connectedLabel: note.connected_label || '',
+      connectedUrl: note.connected_url || '',
       connectedBook,
       tags: note.tags || [],
     })}
@@ -786,6 +889,10 @@ async function handleEditSave(noteId) {
 
   if (!values.content) {
     showFormError(prefix, 'Note content cannot be empty.');
+    return;
+  }
+  if (values.note_type === 'connection' && !values.connected_source_id && !values.connected_label) {
+    showFormError(prefix, 'Choose a book or type what this note connects to.');
     return;
   }
 

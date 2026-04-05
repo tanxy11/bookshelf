@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS notes (
         CHECK (note_type IN ('thought', 'quote', 'connection', 'disagreement', 'question')),
     content TEXT NOT NULL,
     page_or_location TEXT,
+    connected_label TEXT,
+    connected_url TEXT,
     connected_source_type TEXT,
     connected_source_id INTEGER,
     tags TEXT,

@@ -263,23 +263,43 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_2(self):
+    def test_schema_version_is_4(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 2)
+        self.assertEqual(get_schema_version(conn), 4)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 2)
+        self.assertEqual(get_schema_version(conn), 4)
         conn.close()
 
     def test_existing_notes_table_upgrades_cleanly(self):
         conn = get_connection(self.db_path)
         db_module._migration_v1(conn)
-        conn.executescript(db_module._NOTES_SCHEMA)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type TEXT NOT NULL DEFAULT 'book'
+                    CHECK (source_type IN ('book', 'article', 'movie', 'blog', 'report', 'other')),
+                source_id INTEGER NOT NULL,
+                note_type TEXT NOT NULL DEFAULT 'thought'
+                    CHECK (note_type IN ('thought', 'quote', 'connection', 'disagreement', 'question')),
+                content TEXT NOT NULL,
+                page_or_location TEXT,
+                connected_source_type TEXT,
+                connected_source_id INTEGER,
+                tags TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notes_source ON notes(source_type, source_id);
+            CREATE INDEX IF NOT EXISTS idx_notes_type ON notes(note_type);
+            CREATE INDEX IF NOT EXISTS idx_notes_connected ON notes(connected_source_type, connected_source_id);
+        """)
         conn.execute(
             """CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
@@ -297,10 +317,17 @@ class DbSchemaTests(unittest.TestCase):
             ).fetchall()
         }
 
-        self.assertEqual(applied, 1)
-        self.assertEqual(get_schema_version(conn), 2)
+        note_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(notes)").fetchall()
+        }
+
+        self.assertEqual(applied, 3)
+        self.assertEqual(get_schema_version(conn), 4)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
+        self.assertIn("connected_label", note_columns)
+        self.assertIn("connected_url", note_columns)
         conn.close()
 
     def test_insert_and_list_activity_rows(self):
@@ -896,6 +923,96 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(activity[0]["event_type"], "note_added")
         self.assertEqual(activity[0]["note_type"], "quote")
         self.assertEqual(activity[0]["summary"], "Added a quote from Dune")
+
+    def test_create_connection_note_enriches_connected_book(self):
+        create = self.client.post(
+            "/api/books/1/notes",
+            json={
+                "note_type": "connection",
+                "content": "Echoes Orwell's warning.",
+                "connected_source_id": 2,
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(create.status_code, 201)
+        notes = self.client.get("/api/books/1/notes").json()["notes"]
+        self.assertEqual(notes[0]["note_type"], "connection")
+        self.assertEqual(notes[0]["connected_source_id"], 2)
+        self.assertIsNone(notes[0]["connected_label"])
+        self.assertIsNone(notes[0]["connected_url"])
+        self.assertEqual(notes[0]["connected_book"]["title"], "1984")
+
+    def test_connection_note_accepts_external_label_without_book_id(self):
+        create = self.client.post(
+            "/api/books/1/notes",
+            json={
+                "note_type": "connection",
+                "content": "The same dread as a Bergman film.",
+                "connected_label": "Winter Light",
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(create.status_code, 201)
+        notes = self.client.get("/api/books/1/notes").json()["notes"]
+        self.assertEqual(notes[0]["note_type"], "connection")
+        self.assertIsNone(notes[0]["connected_source_id"])
+        self.assertEqual(notes[0]["connected_label"], "Winter Light")
+        self.assertIsNone(notes[0]["connected_url"])
+        self.assertIsNone(notes[0]["connected_book"])
+
+    def test_connection_note_accepts_external_url(self):
+        create = self.client.post(
+            "/api/books/1/notes",
+            json={
+                "note_type": "connection",
+                "content": "This has the same stripped spiritual chill.",
+                "connected_label": "Winter Light",
+                "connected_url": "https://en.wikipedia.org/wiki/Winter_Light",
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(create.status_code, 201)
+        notes = self.client.get("/api/books/1/notes").json()["notes"]
+        self.assertEqual(notes[0]["connected_label"], "Winter Light")
+        self.assertEqual(
+            notes[0]["connected_url"],
+            "https://en.wikipedia.org/wiki/Winter_Light",
+        )
+        self.assertIsNone(notes[0]["connected_book"])
+
+    def test_connection_note_requires_connected_book_or_label(self):
+        missing = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "connection", "content": "Missing target."},
+            headers=TEST_AUTH_HEADER,
+        )
+        invalid = self.client.post(
+            "/api/books/1/notes",
+            json={
+                "note_type": "connection",
+                "content": "Bad target.",
+                "connected_source_id": 99999,
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+        invalid_url = self.client.post(
+            "/api/books/1/notes",
+            json={
+                "note_type": "connection",
+                "content": "Bad URL.",
+                "connected_label": "Winter Light",
+                "connected_url": "winter-light",
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(missing.status_code, 422)
+        self.assertEqual(invalid.status_code, 422)
+        self.assertEqual(invalid_url.status_code, 422)
+        self.assertEqual(self.client.get("/api/books/1/notes").json()["notes"], [])
 
     def test_notes_endpoint_returns_newest_first(self):
         first = self.client.post(
