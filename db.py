@@ -110,6 +110,28 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_book_id
 """
 
 
+_BOOK_SUGGESTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS book_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_title TEXT NOT NULL,
+    book_author TEXT,
+    why TEXT NOT NULL,
+    visitor_name TEXT,
+    visitor_email TEXT,
+    email_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (email_status IN ('pending', 'sent', 'failed')),
+    email_sent_at TEXT,
+    email_error TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_book_suggestions_created_at
+    ON book_suggestions(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_book_suggestions_email_status
+    ON book_suggestions(email_status);
+"""
+
+
 def _migration_v2(conn: sqlite3.Connection) -> None:
     conn.executescript(_NOTES_SCHEMA)
     conn.executescript(_ACTIVITY_LOG_SCHEMA)
@@ -133,6 +155,10 @@ def _migration_v4(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE notes ADD COLUMN connected_url TEXT")
 
 
+def _migration_v5(conn: sqlite3.Connection) -> None:
+    conn.executescript(_BOOK_SUGGESTIONS_SCHEMA)
+
+
 # ── Migration registry ────────────────────────────────────────────────────────
 
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
@@ -140,6 +166,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (2, _migration_v2),
     (3, _migration_v3),
     (4, _migration_v4),
+    (5, _migration_v5),
 ]
 
 
@@ -361,3 +388,63 @@ def list_activity_rows(
         (limit, offset),
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def insert_book_suggestion(
+    conn: sqlite3.Connection,
+    *,
+    book_title: str,
+    why: str,
+    book_author: str | None = None,
+    visitor_name: str | None = None,
+    visitor_email: str | None = None,
+    email_status: str = "pending",
+    email_sent_at: str | None = None,
+    email_error: str | None = None,
+) -> int:
+    cursor = conn.execute(
+        """INSERT INTO book_suggestions
+           (book_title, book_author, why, visitor_name, visitor_email,
+            email_status, email_sent_at, email_error)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            book_title,
+            book_author,
+            why,
+            visitor_name,
+            visitor_email,
+            email_status,
+            email_sent_at,
+            email_error,
+        ),
+    )
+    return cursor.lastrowid
+
+
+def get_book_suggestion_by_id(
+    conn: sqlite3.Connection, suggestion_id: int
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM book_suggestions WHERE id = ?",
+        (suggestion_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def update_book_suggestion_email_state(
+    conn: sqlite3.Connection,
+    suggestion_id: int,
+    *,
+    email_status: str,
+    email_sent_at: str | None = None,
+    email_error: str | None = None,
+) -> bool:
+    cursor = conn.execute(
+        """UPDATE book_suggestions
+           SET email_status = ?, email_sent_at = ?, email_error = ?
+           WHERE id = ?""",
+        (email_status, email_sent_at, email_error, suggestion_id),
+    )
+    return cursor.rowcount > 0

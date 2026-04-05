@@ -347,6 +347,14 @@
       margin-bottom: 16px;
     }
 
+    .section-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
     .section-heading {
       font-family: 'Cormorant Garamond', 'Times New Roman', serif;
       font-size: clamp(1.9rem, 3.2vw, 2.8rem);
@@ -506,6 +514,46 @@
 
     .taste-preview.is-hidden {
       display: none;
+    }
+
+    .taste-suggest-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 0 5px;
+      border: none;
+      border-bottom: 1px solid rgba(120, 86, 65, 0.18);
+      border-radius: 0;
+      background: transparent;
+      color: var(--accent-deep);
+      font-size: 1.02rem;
+      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      line-height: 1.15;
+      cursor: pointer;
+      transition: color .16s ease, border-color .16s ease;
+    }
+
+    .taste-suggest-btn::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(122, 92, 62, 0.32);
+      transform: translateY(1px);
+    }
+
+    .taste-suggest-btn:hover {
+      color: var(--accent);
+      border-bottom-color: rgba(120, 86, 65, 0.32);
+    }
+
+    .taste-suggest-btn::after {
+      content: "→";
+      font-size: .8rem;
+      color: rgba(120, 86, 65, 0.62);
+      transform: translateY(1px);
     }
 
     .traits-grid {
@@ -1158,6 +1206,301 @@
       border-color: var(--accent-deep);
     }
 
+    .suggest-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(54, 41, 30, 0.28);
+      backdrop-filter: blur(10px);
+    }
+
+    .suggest-modal-shell {
+      width: min(620px, 100%);
+      max-height: min(88vh, 900px);
+      overflow: auto;
+      padding: 22px 22px 20px;
+      border: 1px solid rgba(122, 92, 62, 0.16);
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at top right, rgba(156, 112, 84, 0.08), transparent 30%),
+        linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(244, 236, 225, 0.96)),
+        var(--surface-strong);
+      box-shadow: 0 28px 70px rgba(50, 40, 30, 0.2);
+      position: relative;
+    }
+
+    .suggest-modal-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(122, 92, 62, 0.14);
+      border-radius: 50%;
+      background: rgba(255, 252, 247, 0.82);
+      color: var(--muted);
+      font-size: 1rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color .16s ease, color .16s ease, background .16s ease;
+    }
+
+    .suggest-modal-close:hover {
+      border-color: rgba(122, 92, 62, 0.24);
+      color: var(--accent-deep);
+      background: rgba(255, 255, 255, 0.96);
+    }
+
+    .suggest-modal-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(122, 92, 62, 0.14);
+      background: rgba(255, 250, 243, 0.76);
+      color: var(--accent-deep);
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .05em;
+    }
+
+    .suggest-modal-kicker::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .suggest-modal-title {
+      margin-top: 16px;
+      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+      font-size: clamp(2rem, 4vw, 2.7rem);
+      font-weight: 600;
+      letter-spacing: -.03em;
+      line-height: .96;
+      color: rgba(55, 43, 34, 0.96);
+      max-width: 11ch;
+    }
+
+    .suggest-modal-copy {
+      margin-top: 12px;
+      max-width: 54ch;
+      color: var(--muted);
+      font-size: .94rem;
+      line-height: 1.68;
+    }
+
+    .suggest-prototype-note {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px dashed rgba(122, 92, 62, 0.16);
+      background: rgba(255, 252, 247, 0.62);
+      color: var(--muted);
+      font-size: .79rem;
+      line-height: 1.55;
+    }
+
+    .suggest-form {
+      display: grid;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .suggest-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .suggest-field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .suggest-field.full {
+      grid-column: 1 / -1;
+    }
+
+    .suggest-label {
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+      color: var(--muted);
+    }
+
+    .suggest-input,
+    .suggest-textarea {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid rgba(122, 92, 62, 0.14);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.82);
+      font-size: .94rem;
+      font-family: inherit;
+      color: var(--text);
+      transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+
+    .suggest-input:focus,
+    .suggest-textarea:focus {
+      outline: none;
+      border-color: rgba(122, 92, 62, 0.34);
+      box-shadow: 0 0 0 4px rgba(122, 92, 62, 0.08);
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .suggest-textarea {
+      min-height: 132px;
+      resize: vertical;
+      line-height: 1.58;
+    }
+
+    .suggest-field-hint {
+      color: var(--muted);
+      font-size: .75rem;
+      line-height: 1.45;
+    }
+
+    .suggest-error {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(155, 111, 106, 0.22);
+      background: rgba(155, 111, 106, 0.1);
+      color: var(--rose);
+      font-size: .82rem;
+      line-height: 1.5;
+    }
+
+    .suggest-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 2px;
+    }
+
+    .suggest-actions-meta {
+      color: var(--muted);
+      font-size: .77rem;
+      line-height: 1.5;
+      max-width: 28ch;
+    }
+
+    .suggest-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .suggest-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: .84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform .14s ease, background .14s ease, border-color .14s ease, color .14s ease;
+    }
+
+    .suggest-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .suggest-btn:disabled {
+      cursor: wait;
+      opacity: .72;
+      transform: none;
+    }
+
+    .suggest-btn-secondary {
+      border: 1px solid rgba(122, 92, 62, 0.14);
+      background: rgba(255, 252, 247, 0.8);
+      color: var(--muted);
+    }
+
+    .suggest-btn-secondary:hover {
+      border-color: rgba(122, 92, 62, 0.24);
+      color: var(--accent-deep);
+    }
+
+    .suggest-btn-primary {
+      border: 1px solid rgba(120, 86, 65, 0.1);
+      background: var(--accent-deep);
+      color: #fff9f2;
+      box-shadow: 0 10px 24px rgba(80, 58, 42, 0.12);
+    }
+
+    .suggest-btn-primary:hover {
+      background: var(--accent);
+    }
+
+    .suggest-success {
+      margin-top: 20px;
+      padding: 18px 18px 16px;
+      border-radius: 20px;
+      border: 1px solid rgba(104, 115, 93, 0.18);
+      background:
+        linear-gradient(180deg, rgba(250, 253, 247, 0.96), rgba(238, 244, 231, 0.88)),
+        var(--olive-soft);
+    }
+
+    .suggest-success-title {
+      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+      font-size: 1.55rem;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      color: rgba(55, 43, 34, 0.94);
+    }
+
+    .suggest-success-copy {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: .9rem;
+      line-height: 1.62;
+      max-width: 54ch;
+    }
+
+    .suggest-success-preview {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(104, 115, 93, 0.14);
+      background: rgba(255, 252, 247, 0.68);
+      display: grid;
+      gap: 4px;
+    }
+
+    .suggest-success-book {
+      font-size: .96rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .suggest-success-why {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: .84rem;
+      line-height: 1.56;
+      white-space: pre-wrap;
+    }
+
+    body.modal-open {
+      overflow: hidden;
+    }
+
     body.authed .book-card .edit-icon {
       display: flex;
     }
@@ -1189,6 +1532,11 @@
       .recommendation-grid { grid-template-columns: 1fr; }
       .traits-grid { grid-template-columns: 1fr; }
       .site-title { white-space: normal; }
+      .section-actions { justify-content: flex-start; }
+      .suggest-actions {
+        align-items: flex-start;
+        flex-direction: column;
+      }
     }
 
     @media (max-width: 640px) {
@@ -1222,7 +1570,30 @@
         flex-direction: column;
         align-items: flex-start;
       }
+      .section-actions {
+        width: 100%;
+      }
+      .taste-suggest-btn {
+        width: auto;
+        justify-content: flex-start;
+      }
       .taste-summary { max-width: none; }
+      .suggest-modal-backdrop {
+        padding: 14px;
+      }
+      .suggest-modal-shell {
+        padding: 18px 16px 16px;
+        border-radius: 22px;
+      }
+      .suggest-form-grid {
+        grid-template-columns: 1fr;
+      }
+      .suggest-actions-row {
+        width: 100%;
+      }
+      .suggest-btn {
+        width: 100%;
+      }
     }
 
     /* ── Reading Life in Weeks ── */
@@ -1454,6 +1825,9 @@
       <div>
         <h2 class="section-heading">Taste Profile</h2>
       </div>
+      <div class="section-actions">
+        <button class="taste-suggest-btn" id="suggest-book-open-btn" type="button">Know a book I’d like?</button>
+      </div>
     </div>
     <button class="collapsible-toggle" id="taste-toggle">
       <span class="chevron">▶</span>
@@ -1582,6 +1956,68 @@
 
 <div class="book-hovercard" id="book-hovercard" hidden aria-hidden="true"></div>
 <div class="weeks-tooltip" id="weeks-tooltip" aria-hidden="true"></div>
+<div class="suggest-modal-backdrop hidden" id="suggest-book-modal" aria-hidden="true">
+  <div class="suggest-modal-shell" role="dialog" aria-modal="true" aria-labelledby="suggest-book-title">
+    <button class="suggest-modal-close" id="suggest-book-close-btn" type="button" aria-label="Close suggestion dialog">×</button>
+    <div class="suggest-modal-kicker">Reading suggestions</div>
+    <h2 class="suggest-modal-title" id="suggest-book-title">Know a book I’d like?</h2>
+    <p class="suggest-modal-copy">If something on this page made you think of a title, send it my way. I want this to feel like a conversation with the shelf, not just a backlog dump.</p>
+    <p class="suggest-prototype-note">Suggestions are saved to the site first. If email delivery is configured, they also get routed straight to my inbox.</p>
+
+    <form class="suggest-form" id="suggest-book-form" novalidate>
+      <div class="suggest-form-grid">
+        <label class="suggest-field">
+          <span class="suggest-label">Book title</span>
+          <input class="suggest-input" id="suggest-book-title-input" name="title" type="text" placeholder="The Magic Mountain" required>
+        </label>
+        <label class="suggest-field">
+          <span class="suggest-label">Author</span>
+          <input class="suggest-input" id="suggest-book-author-input" name="author" type="text" placeholder="Thomas Mann">
+        </label>
+        <label class="suggest-field full">
+          <span class="suggest-label">Why this book?</span>
+          <textarea class="suggest-textarea" id="suggest-book-why-input" name="reason" placeholder="What on the site made you think of it? What thread would it continue?" required></textarea>
+        </label>
+        <label class="suggest-field">
+          <span class="suggest-label">Your name</span>
+          <input class="suggest-input" id="suggest-book-name-input" name="name" type="text" placeholder="Optional">
+        </label>
+        <label class="suggest-field">
+          <span class="suggest-label">Your email</span>
+          <input class="suggest-input" id="suggest-book-email-input" name="email" type="email" placeholder="Optional, if you'd want a reply">
+          <span class="suggest-field-hint">Optional. I’d only use this if I eventually reply.</span>
+        </label>
+      </div>
+      <label class="sr-only" aria-hidden="true">
+        Website
+        <input id="suggest-book-website-input" name="website" type="text" tabindex="-1" autocomplete="off">
+      </label>
+
+      <div class="suggest-error hidden" id="suggest-book-error" role="alert"></div>
+
+      <div class="suggest-actions" id="suggest-book-actions">
+        <p class="suggest-actions-meta">Short, thoughtful suggestions are best. If you’d want a reply later, leave an email.</p>
+        <div class="suggest-actions-row">
+          <button class="suggest-btn suggest-btn-secondary" id="suggest-book-cancel-btn" type="button">Close</button>
+          <button class="suggest-btn suggest-btn-primary" id="suggest-book-submit-btn" type="submit">Send suggestion</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="suggest-success hidden" id="suggest-book-success" aria-live="polite">
+      <div class="suggest-success-title" id="suggest-book-success-title">Thanks — it’s saved.</div>
+      <p class="suggest-success-copy" id="suggest-book-success-copy">I’ve saved this recommendation to the site. Email routing comes next, but your suggestion is already in the queue.</p>
+      <div class="suggest-success-preview" id="suggest-book-success-preview"></div>
+      <div class="suggest-actions" style="margin-top:16px">
+        <p class="suggest-actions-meta">You can add another one right away, or close this and keep browsing.</p>
+        <div class="suggest-actions-row">
+          <button class="suggest-btn suggest-btn-secondary" id="suggest-book-reset-btn" type="button">Suggest another</button>
+          <button class="suggest-btn suggest-btn-primary" id="suggest-book-done-btn" type="button">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 const state = { sort: 'date_read', rating: 0, shelves: [], query: '' };
@@ -1645,6 +2081,116 @@ function escHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+const suggestModalEl = document.getElementById('suggest-book-modal');
+const suggestFormEl = document.getElementById('suggest-book-form');
+const suggestSuccessEl = document.getElementById('suggest-book-success');
+const suggestErrorEl = document.getElementById('suggest-book-error');
+const suggestSuccessPreviewEl = document.getElementById('suggest-book-success-preview');
+const suggestSuccessTitleEl = document.getElementById('suggest-book-success-title');
+const suggestSuccessCopyEl = document.getElementById('suggest-book-success-copy');
+const suggestTitleInputEl = document.getElementById('suggest-book-title-input');
+const suggestAuthorInputEl = document.getElementById('suggest-book-author-input');
+const suggestWhyInputEl = document.getElementById('suggest-book-why-input');
+const suggestNameInputEl = document.getElementById('suggest-book-name-input');
+const suggestEmailInputEl = document.getElementById('suggest-book-email-input');
+const suggestWebsiteInputEl = document.getElementById('suggest-book-website-input');
+const suggestSubmitButtonEl = document.getElementById('suggest-book-submit-btn');
+
+function resetSuggestionFormState() {
+  suggestFormEl.reset();
+  suggestErrorEl.textContent = '';
+  suggestErrorEl.classList.add('hidden');
+  suggestFormEl.classList.remove('hidden');
+  suggestSuccessEl.classList.add('hidden');
+  suggestSuccessPreviewEl.innerHTML = '';
+  suggestSuccessTitleEl.textContent = 'Thanks — it’s saved.';
+  suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site. If email delivery is configured, it will also be routed to my inbox.';
+  suggestSubmitButtonEl.disabled = false;
+  suggestSubmitButtonEl.textContent = 'Send suggestion';
+}
+
+function openSuggestionModal() {
+  resetSuggestionFormState();
+  suggestModalEl.classList.remove('hidden');
+  suggestModalEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  requestAnimationFrame(() => suggestTitleInputEl.focus());
+}
+
+function closeSuggestionModal() {
+  suggestModalEl.classList.add('hidden');
+  suggestModalEl.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+}
+
+function showSuggestionError(message) {
+  suggestErrorEl.textContent = message;
+  suggestErrorEl.classList.remove('hidden');
+}
+
+function validateSuggestionForm() {
+  const title = suggestTitleInputEl.value.trim();
+  const why = suggestWhyInputEl.value.trim();
+  const email = suggestEmailInputEl.value.trim();
+
+  if (!title) {
+    return 'Book title is required.';
+  }
+  if (!why) {
+    return 'A short note on why this book fits would help.';
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return 'If you include an email, please use a valid address.';
+  }
+  return '';
+}
+
+function renderSuggestionPreview() {
+  const title = suggestTitleInputEl.value.trim();
+  const author = suggestAuthorInputEl.value.trim();
+  const why = suggestWhyInputEl.value.trim();
+  const name = suggestNameInputEl.value.trim();
+  const email = suggestEmailInputEl.value.trim();
+
+  suggestSuccessPreviewEl.innerHTML = `
+    <div class="suggest-success-book">${escHtml(title)}${author ? ` <span style="font-weight:400;color:var(--muted)">by ${escHtml(author)}</span>` : ''}</div>
+    <div class="suggest-success-why">${escHtml(why)}</div>
+    ${(name || email) ? `<div class="suggest-success-why" style="margin-top:6px">${name ? `From ${escHtml(name)}` : 'From an unnamed reader'}${email ? ` · ${escHtml(email)}` : ''}</div>` : ''}`;
+}
+
+function suggestionPayload() {
+  return {
+    book_title: suggestTitleInputEl.value.trim(),
+    book_author: suggestAuthorInputEl.value.trim(),
+    why: suggestWhyInputEl.value.trim(),
+    visitor_name: suggestNameInputEl.value.trim(),
+    visitor_email: suggestEmailInputEl.value.trim(),
+    website: suggestWebsiteInputEl.value.trim(),
+  };
+}
+
+function setSuggestionSubmitting(isSubmitting) {
+  suggestSubmitButtonEl.disabled = isSubmitting;
+  suggestSubmitButtonEl.textContent = isSubmitting ? 'Saving…' : 'Send suggestion';
+}
+
+function applySuggestionDeliveryState(deliveryStatus) {
+  if (deliveryStatus === 'sent') {
+    suggestSuccessTitleEl.textContent = 'Thanks — it’s on its way.';
+    suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site and routed it to my inbox.';
+    return;
+  }
+
+  if (deliveryStatus === 'failed') {
+    suggestSuccessTitleEl.textContent = 'Thanks — it’s saved.';
+    suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site. Email delivery missed this round, but the suggestion is safely kept.';
+    return;
+  }
+
+  suggestSuccessTitleEl.textContent = 'Thanks — it’s saved.';
+  suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site. If email delivery is configured, it will also be routed to my inbox.';
 }
 
 function activityClass(eventType) {
@@ -2259,6 +2805,75 @@ document.getElementById('taste-toggle').addEventListener('click', function() {
   const isOpen = this.classList.contains('open');
   this.querySelector('.chevron').textContent = isOpen ? '▼' : '▶';
   this.querySelector('span:last-child').textContent = isOpen ? 'Hide taste profile' : 'Show taste profile';
+});
+
+document.getElementById('suggest-book-open-btn').addEventListener('click', openSuggestionModal);
+document.getElementById('suggest-book-close-btn').addEventListener('click', closeSuggestionModal);
+document.getElementById('suggest-book-cancel-btn').addEventListener('click', closeSuggestionModal);
+document.getElementById('suggest-book-done-btn').addEventListener('click', closeSuggestionModal);
+document.getElementById('suggest-book-reset-btn').addEventListener('click', () => {
+  resetSuggestionFormState();
+  suggestTitleInputEl.focus();
+});
+
+suggestModalEl.addEventListener('click', event => {
+  if (event.target === suggestModalEl) {
+    closeSuggestionModal();
+  }
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !suggestModalEl.classList.contains('hidden')) {
+    closeSuggestionModal();
+  }
+});
+
+suggestFormEl.addEventListener('submit', async event => {
+  event.preventDefault();
+  suggestErrorEl.classList.add('hidden');
+
+  const validationMessage = validateSuggestionForm();
+  if (validationMessage) {
+    showSuggestionError(validationMessage);
+    return;
+  }
+
+  setSuggestionSubmitting(true);
+
+  try {
+    const response = await fetch(`${apiBase}/api/book-suggestions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(suggestionPayload()),
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const detail = payload && typeof payload.detail === 'string'
+        ? payload.detail
+        : 'Could not save your suggestion right now. Please try again in a moment.';
+      throw new Error(detail);
+    }
+
+    applySuggestionDeliveryState(payload && payload.delivery_status ? payload.delivery_status : 'pending');
+    renderSuggestionPreview();
+    suggestFormEl.classList.add('hidden');
+    suggestSuccessEl.classList.remove('hidden');
+  } catch (error) {
+    showSuggestionError(
+      error && error.message
+        ? error.message
+        : 'Could not save your suggestion right now. Please try again in a moment.'
+    );
+  } finally {
+    setSuggestionSubmitting(false);
+  }
 });
 
 document.getElementById('recommendations-toggle').addEventListener('click', function() {

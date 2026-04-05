@@ -24,10 +24,12 @@ from bookshelf_data import (
 from db import (
     delete_book,
     get_book_by_id,
+    get_book_suggestion_by_id,
     get_connection,
     get_llm_cache_value,
     get_schema_version,
     insert_book,
+    insert_book_suggestion,
     list_activity_rows,
     run_migrations,
     set_llm_cache_value,
@@ -260,20 +262,21 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("auth_tokens", tables)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
+        self.assertIn("book_suggestions", tables)
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_4(self):
+    def test_schema_version_is_5(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 4)
+        self.assertEqual(get_schema_version(conn), 5)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 4)
+        self.assertEqual(get_schema_version(conn), 5)
         conn.close()
 
     def test_existing_notes_table_upgrades_cleanly(self):
@@ -322,10 +325,11 @@ class DbSchemaTests(unittest.TestCase):
             for row in conn.execute("PRAGMA table_info(notes)").fetchall()
         }
 
-        self.assertEqual(applied, 3)
-        self.assertEqual(get_schema_version(conn), 4)
+        self.assertEqual(applied, 4)
+        self.assertEqual(get_schema_version(conn), 5)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
+        self.assertIn("book_suggestions", tables)
         self.assertIn("connected_label", note_columns)
         self.assertIn("connected_url", note_columns)
         conn.close()
@@ -378,6 +382,26 @@ class DbSchemaTests(unittest.TestCase):
         self.assertEqual(row["my_rating"], 4)
         self.assertEqual(json.loads(row["shelves"]), ["fiction", "favorites"])
         self.assertEqual(row["review"], "Great book.")
+        conn.close()
+
+    def test_insert_and_retrieve_book_suggestion(self):
+        conn = get_connection(self.db_path)
+        run_migrations(conn)
+        suggestion_id = insert_book_suggestion(
+            conn,
+            book_title="The Magic Mountain",
+            book_author="Thomas Mann",
+            why="The taste profile made me think of ambitious, reflective novels.",
+            visitor_name="A reader",
+            visitor_email="reader@example.com",
+        )
+        conn.commit()
+
+        row = get_book_suggestion_by_id(conn, suggestion_id)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["book_title"], "The Magic Mountain")
+        self.assertEqual(row["email_status"], "pending")
+        self.assertEqual(row["visitor_email"], "reader@example.com")
         conn.close()
 
     def test_llm_cache_round_trip(self):
@@ -1066,6 +1090,115 @@ class ApiSqliteTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(self.client.get("/api/activity").json()["items"], [])
+
+    def test_create_book_suggestion_persists_row(self):
+        resp = self.client.post(
+            "/api/book-suggestions",
+            json={
+                "book_title": "The Magic Mountain",
+                "book_author": "Thomas Mann",
+                "why": "It feels like it would extend the site’s appetite for reflective, demanding novels.",
+                "visitor_name": "Curious reader",
+                "visitor_email": "reader@example.com",
+            },
+        )
+        self.assertEqual(resp.status_code, 201)
+        payload = resp.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "saved")
+        self.assertEqual(payload["delivery_status"], "pending")
+
+        conn = get_connection(self.db_path)
+        row = get_book_suggestion_by_id(conn, payload["id"])
+        self.assertIsNotNone(row)
+        self.assertEqual(row["book_title"], "The Magic Mountain")
+        self.assertEqual(row["book_author"], "Thomas Mann")
+        self.assertEqual(row["visitor_name"], "Curious reader")
+        self.assertEqual(row["email_status"], "pending")
+        conn.close()
+
+    def test_book_suggestion_marks_email_sent_when_delivery_succeeds(self):
+        with patch("api.suggestions.get_suggestion_email_config", return_value=object()), patch(
+            "api.suggestions.send_book_suggestion_notification"
+        ) as send_mock:
+            resp = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "The Magic Mountain",
+                    "why": "Worth the detour.",
+                    "visitor_email": "reader@example.com",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 201)
+        payload = resp.json()
+        self.assertEqual(payload["delivery_status"], "sent")
+        send_mock.assert_called_once()
+
+        conn = get_connection(self.db_path)
+        row = get_book_suggestion_by_id(conn, payload["id"])
+        self.assertEqual(row["email_status"], "sent")
+        self.assertIsNotNone(row["email_sent_at"])
+        self.assertIsNone(row["email_error"])
+        conn.close()
+
+    def test_book_suggestion_marks_email_failed_when_delivery_raises(self):
+        with patch("api.suggestions.get_suggestion_email_config", return_value=object()), patch(
+            "api.suggestions.send_book_suggestion_notification",
+            side_effect=RuntimeError("smtp unavailable"),
+        ):
+            resp = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "The Magic Mountain",
+                    "why": "Worth the detour.",
+                    "visitor_email": "reader@example.com",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 201)
+        payload = resp.json()
+        self.assertEqual(payload["delivery_status"], "failed")
+
+        conn = get_connection(self.db_path)
+        row = get_book_suggestion_by_id(conn, payload["id"])
+        self.assertEqual(row["email_status"], "failed")
+        self.assertIsNone(row["email_sent_at"])
+        self.assertIn("smtp unavailable", row["email_error"])
+        conn.close()
+
+    def test_book_suggestion_validates_required_fields_and_email(self):
+        missing = self.client.post(
+            "/api/book-suggestions",
+            json={"book_title": "", "why": ""},
+        )
+        bad_email = self.client.post(
+            "/api/book-suggestions",
+            json={
+                "book_title": "The Magic Mountain",
+                "why": "Worth your time.",
+                "visitor_email": "not-an-email",
+            },
+        )
+
+        self.assertEqual(missing.status_code, 422)
+        self.assertEqual(bad_email.status_code, 422)
+
+    def test_book_suggestion_honeypot_does_not_persist(self):
+        resp = self.client.post(
+            "/api/book-suggestions",
+            json={
+                "book_title": "Spam Book",
+                "why": "Ignore this.",
+                "website": "https://spam.example",
+            },
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        conn = get_connection(self.db_path)
+        count = conn.execute("SELECT COUNT(*) FROM book_suggestions").fetchone()[0]
+        self.assertEqual(count, 0)
+        conn.close()
 
 
 # ── Tests: Migration script ───────────────────────────────────────────────────

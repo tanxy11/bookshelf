@@ -20,6 +20,7 @@ from bookshelf_data import (
 from api.activity import router as activity_router
 from api.auth import verify_auth
 from api.notes import router as notes_router
+from api.suggestions import router as suggestions_router
 
 load_env_file(ROOT_DIR / ".env")
 
@@ -52,6 +53,7 @@ else:
 app = FastAPI(title="Bookshelf API")
 app.include_router(activity_router)
 app.include_router(notes_router)
+app.include_router(suggestions_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
