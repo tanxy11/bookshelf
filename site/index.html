@@ -483,28 +483,30 @@
     }
 
     .taste-preview {
-      margin-top: 12px;
-      max-width: 78ch;
+      margin-top: 0;
       color: var(--muted);
       font-size: .9rem;
       line-height: 1.6;
     }
 
-    .taste-preview.is-hidden {
-      display: none;
+    .taste-invite-row {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
     }
 
     .taste-suggest-btn {
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      padding: 4px 0 5px;
+      padding: 3px 0 4px;
       border: none;
-      border-bottom: 1px solid rgba(120, 86, 65, 0.18);
+      border-bottom: 1px solid rgba(120, 86, 65, 0.12);
       border-radius: 0;
       background: transparent;
       color: var(--accent-deep);
-      font-size: 1.02rem;
+      font-size: .98rem;
       font-family: 'Cormorant Garamond', 'Times New Roman', serif;
       font-weight: 600;
       letter-spacing: -.01em;
@@ -524,7 +526,7 @@
 
     .taste-suggest-btn:hover {
       color: var(--accent);
-      border-bottom-color: rgba(120, 86, 65, 0.32);
+      border-bottom-color: rgba(120, 86, 65, 0.24);
     }
 
     .taste-suggest-btn::after {
@@ -532,6 +534,53 @@
       font-size: .8rem;
       color: rgba(120, 86, 65, 0.62);
       transform: translateY(1px);
+    }
+
+    .taste-preview-shell {
+      margin-top: 18px;
+      max-width: 78ch;
+    }
+
+    .taste-preview-shell.is-hidden {
+      display: none;
+    }
+
+    .taste-inline-toggle {
+      margin-top: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--accent-deep);
+      font-size: .9rem;
+      font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      line-height: 1.15;
+      cursor: pointer;
+      transition: color .16s ease;
+    }
+
+    .taste-inline-toggle:hover {
+      color: var(--accent);
+    }
+
+    .taste-inline-toggle::after {
+      content: "→";
+      font-size: .8rem;
+      color: rgba(120, 86, 65, 0.62);
+      transform: translateY(1px);
+    }
+
+    .taste-inline-toggle.is-collapse {
+      margin-top: 18px;
+      color: rgba(113, 93, 74, 0.88);
+    }
+
+    .taste-inline-toggle.is-collapse::after {
+      content: "↑";
     }
 
     .traits-grid {
@@ -1799,15 +1848,14 @@
       <div>
         <h2 class="section-heading">Taste Profile</h2>
       </div>
-      <div class="section-actions">
-        <button class="taste-suggest-btn" id="suggest-book-open-btn" type="button">Know a book I’d like?</button>
-      </div>
     </div>
-    <button class="collapsible-toggle" id="taste-toggle">
-      <span class="chevron">▶</span>
-      <span>Show taste profile</span>
-    </button>
-    <p class="taste-preview" id="taste-preview"></p>
+    <div class="taste-invite-row">
+      <button class="taste-suggest-btn" id="suggest-book-open-btn" type="button">Know a book I’d like?</button>
+    </div>
+    <div class="taste-preview-shell" id="taste-preview-shell">
+      <p class="taste-preview" id="taste-preview"></p>
+      <button class="taste-inline-toggle" id="taste-toggle" type="button">Read the full sketch</button>
+    </div>
     <div class="collapsible-content" id="taste-content">
       <div class="taste-layout">
         <div class="taste-copy">
@@ -1816,6 +1864,7 @@
             <div class="taste-summary" id="taste-summary"></div>
             <p class="taste-meta">Not a verdict, just a compact read on what the shelf suggests when you step back from the individual spines.</p>
           </div>
+          <button class="taste-inline-toggle is-collapse" id="taste-collapse-toggle" type="button">Show less</button>
           <div class="traits-grid" id="traits-grid"></div>
           <div class="blind-spot" id="blind-spot"></div>
         </div>
@@ -2778,13 +2827,20 @@ document.getElementById('read-controls-toggle').addEventListener('click', functi
   this.querySelector('span:last-child').textContent = isOpen ? 'Hide search & filters' : 'Show search & filters';
 });
 
-document.getElementById('taste-toggle').addEventListener('click', function() {
-  this.classList.toggle('open');
-  document.getElementById('taste-content').classList.toggle('open');
-  document.getElementById('taste-preview').classList.toggle('is-hidden');
-  const isOpen = this.classList.contains('open');
-  this.querySelector('.chevron').textContent = isOpen ? '▼' : '▶';
-  this.querySelector('span:last-child').textContent = isOpen ? 'Hide taste profile' : 'Show taste profile';
+const tastePreviewShellEl = document.getElementById('taste-preview-shell');
+const tasteContentEl = document.getElementById('taste-content');
+
+function setTasteProfileExpanded(isExpanded) {
+  tastePreviewShellEl.classList.toggle('is-hidden', isExpanded);
+  tasteContentEl.classList.toggle('open', isExpanded);
+}
+
+document.getElementById('taste-toggle').addEventListener('click', () => {
+  setTasteProfileExpanded(true);
+});
+
+document.getElementById('taste-collapse-toggle').addEventListener('click', () => {
+  setTasteProfileExpanded(false);
 });
 
 document.getElementById('suggest-book-open-btn').addEventListener('click', openSuggestionModal);
