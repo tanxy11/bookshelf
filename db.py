@@ -503,6 +503,35 @@ def count_recent_book_suggestions(
     return int(row[0] or 0)
 
 
+def count_book_suggestions_since(
+    conn: sqlite3.Connection,
+    *,
+    since_iso: str,
+) -> int:
+    row = conn.execute(
+        """SELECT COUNT(*)
+           FROM book_suggestions
+           WHERE created_at >= ?""",
+        (since_iso,),
+    ).fetchone()
+    return int(row[0] or 0)
+
+
+def count_sent_book_suggestion_emails_since(
+    conn: sqlite3.Connection,
+    *,
+    since_iso: str,
+) -> int:
+    row = conn.execute(
+        """SELECT COUNT(*)
+           FROM book_suggestions
+           WHERE email_status = 'sent'
+             AND COALESCE(email_sent_at, created_at) >= ?""",
+        (since_iso,),
+    ).fetchone()
+    return int(row[0] or 0)
+
+
 def find_recent_duplicate_book_suggestion(
     conn: sqlite3.Connection,
     *,

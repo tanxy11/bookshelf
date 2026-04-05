@@ -661,6 +661,20 @@ class ApiSqliteTests(unittest.TestCase):
         os.environ.pop("BOOKS_DATA", None)
         os.environ.pop("LLM_CACHE_DATA", None)
         os.environ["BOOKSHELF_CORS_ORIGINS"] = "https://book.tanxy.net"
+        # Never let routine API tests talk to real SMTP. Tests that exercise
+        # delivery behavior should opt in explicitly with mocks.
+        for key in (
+            "BOOK_SUGGESTIONS_TO_EMAIL",
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
+            "SMTP_FROM_EMAIL",
+            "SMTP_USE_STARTTLS",
+            "SMTP_USE_SSL",
+            "SMTP_TIMEOUT_SECONDS",
+        ):
+            os.environ.pop(key, None)
 
         if "api.main" in sys.modules:
             self.api_main = importlib.reload(sys.modules["api.main"])
@@ -1189,6 +1203,36 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(count, 3)
         conn.close()
 
+    def test_book_suggestion_global_daily_store_limit_blocks_after_limit(self):
+        with patch.dict(os.environ, {"BOOK_SUGGESTION_DAILY_STORE_LIMIT": "2"}):
+            for idx in range(2):
+                resp = self.client.post(
+                    "/api/book-suggestions",
+                    json={
+                        "book_title": f"Daily Book {idx}",
+                        "why": f"Reason {idx}",
+                    },
+                    headers={"CF-Connecting-IP": f"198.51.100.{80 + idx}"},
+                )
+                self.assertEqual(resp.status_code, 201)
+
+            blocked = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "Daily Book 3",
+                    "why": "Reason 3",
+                },
+                headers={"CF-Connecting-IP": "198.51.100.99"},
+            )
+
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn("today", blocked.json()["detail"])
+
+        conn = get_connection(self.db_path)
+        count = conn.execute("SELECT COUNT(*) FROM book_suggestions").fetchone()[0]
+        self.assertEqual(count, 2)
+        conn.close()
+
     def test_book_suggestion_marks_email_sent_when_delivery_succeeds(self):
         with patch("api.suggestions.get_suggestion_email_config", return_value=object()), patch(
             "api.suggestions.send_book_suggestion_notification"
@@ -1212,6 +1256,42 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(row["email_status"], "sent")
         self.assertIsNotNone(row["email_sent_at"])
         self.assertIsNone(row["email_error"])
+        conn.close()
+
+    def test_book_suggestion_daily_email_limit_skips_send_after_limit(self):
+        with patch.dict(os.environ, {"BOOK_SUGGESTION_DAILY_EMAIL_LIMIT": "1"}), patch(
+            "api.suggestions.get_suggestion_email_config",
+            return_value=object(),
+        ), patch("api.suggestions.send_book_suggestion_notification") as send_mock:
+            first = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "First Book",
+                    "why": "Worth the detour.",
+                },
+                headers={"CF-Connecting-IP": "198.51.100.120"},
+            )
+            second = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "Second Book",
+                    "why": "Also worth the detour.",
+                },
+                headers={"CF-Connecting-IP": "198.51.100.121"},
+            )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(first.json()["delivery_status"], "sent")
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(second.json()["delivery_status"], "failed")
+        self.assertEqual(send_mock.call_count, 1)
+
+        conn = get_connection(self.db_path)
+        first_row = get_book_suggestion_by_id(conn, first.json()["id"])
+        second_row = get_book_suggestion_by_id(conn, second.json()["id"])
+        self.assertEqual(first_row["email_status"], "sent")
+        self.assertEqual(second_row["email_status"], "failed")
+        self.assertIn("Daily email quota reached", second_row["email_error"])
         conn.close()
 
     def test_book_suggestion_marks_email_failed_when_delivery_raises(self):

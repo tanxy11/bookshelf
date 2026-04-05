@@ -147,6 +147,8 @@ Common optional settings:
 - `BOOKSHELF_CORS_ORIGINS`
 - `BOOK_SUGGESTIONS_TO_EMAIL` — inbox destination for suggestion notifications, for example `suggest.book@tanxy.net`
 - `BOOK_SUGGESTION_IP_SALT` — secret used to hash visitor IPs for suggestion abuse protection
+- `BOOK_SUGGESTION_DAILY_STORE_LIMIT` — global cap on how many suggestions can be saved in a 24-hour window
+- `BOOK_SUGGESTION_DAILY_EMAIL_LIMIT` — global cap on how many suggestion notification emails can be sent in a 24-hour window
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USERNAME`
@@ -252,8 +254,9 @@ The homepage suggestion modal stores each submission in `book_suggestions`.
 
 - every suggestion is saved in SQLite first
 - submissions are rate-limited and duplicate-suppressed before insert
+- the site also applies a global daily cap for stored suggestions
 - the site stores a hashed client IP, not the raw IP address
-- if SMTP is configured, the API also sends a notification email
+- if SMTP is configured, the API also sends a notification email up to a daily quota
 - if delivery fails, the suggestion is still kept and marked with `email_status = failed`
 
 This keeps the visitor interaction path durable even when mail delivery is unavailable.
@@ -314,6 +317,8 @@ Set these in `.env` on local/staging/production as needed:
 ```text
 BOOK_SUGGESTIONS_TO_EMAIL=suggest.book@tanxy.net
 BOOK_SUGGESTION_IP_SALT=<random secret>
+BOOK_SUGGESTION_DAILY_STORE_LIMIT=100
+BOOK_SUGGESTION_DAILY_EMAIL_LIMIT=100
 SMTP_HOST=<your relay host>
 SMTP_PORT=587
 SMTP_USERNAME=<optional username>
@@ -329,6 +334,7 @@ Notes:
 - `BOOK_SUGGESTIONS_TO_EMAIL` is the alias that receives suggestion notifications
 - `SMTP_FROM_EMAIL` is the actual sender used by your outbound mail provider
 - Cloudflare Email Routing is not the outbound SMTP provider; it only forwards the destination alias
+- if the email quota is reached for the day, suggestions are still saved but notification delivery is skipped
 
 ### Cloudflare Email Routing
 

@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse
 
 from bookshelf_data import utc_now_iso
 from db import (
+    count_book_suggestions_since,
+    count_sent_book_suggestion_emails_since,
     count_recent_book_suggestions,
     find_recent_duplicate_book_suggestion,
     get_book_suggestion_by_id,
@@ -35,6 +37,8 @@ SHORT_WINDOW_LIMIT = 3
 DAILY_WINDOW = timedelta(hours=24)
 DAILY_WINDOW_LIMIT = 10
 DUPLICATE_WINDOW = timedelta(days=7)
+GLOBAL_DAILY_STORE_LIMIT = 100
+GLOBAL_DAILY_EMAIL_LIMIT = 100
 FALLBACK_IP_HASH_SALT = "bookshelf-book-suggestions-dev"
 
 
@@ -160,6 +164,17 @@ def _request_ip_salt() -> str:
     )
 
 
+def _int_env(name: str, default: int) -> int:
+    raw = (os.getenv(name, "") or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer.") from exc
+    return max(0, value)
+
+
 def _extract_client_ip(request: Request) -> str:
     cf_ip = (request.headers.get("cf-connecting-ip", "") or "").strip()
     if cf_ip:
@@ -211,6 +226,28 @@ def _enforce_rate_limit(conn, *, client_ip_hash: str) -> None:
         )
 
 
+def _enforce_global_daily_store_limit(conn) -> None:
+    daily_store_limit = _int_env(
+        "BOOK_SUGGESTION_DAILY_STORE_LIMIT",
+        GLOBAL_DAILY_STORE_LIMIT,
+    )
+    if daily_store_limit <= 0:
+        raise HTTPException(
+            status_code=429,
+            detail="Reading suggestions are closed for now. Please try again later.",
+        )
+
+    total_count = count_book_suggestions_since(
+        conn,
+        since_iso=_since_iso(DAILY_WINDOW),
+    )
+    if total_count >= daily_store_limit:
+        raise HTTPException(
+            status_code=429,
+            detail="I’ve already received enough suggestions for today. Please try again tomorrow.",
+        )
+
+
 def _existing_duplicate(conn, *, client_ip_hash: str, content_fingerprint: str) -> dict[str, Any] | None:
     return find_recent_duplicate_book_suggestion(
         conn,
@@ -243,6 +280,20 @@ def _persisted_delivery_payload(*, suggestion_id: int, delivery_status: str) -> 
     )
 
 
+def _daily_email_limit_reached(conn) -> bool:
+    daily_email_limit = _int_env(
+        "BOOK_SUGGESTION_DAILY_EMAIL_LIMIT",
+        GLOBAL_DAILY_EMAIL_LIMIT,
+    )
+    if daily_email_limit <= 0:
+        return True
+    sent_count = count_sent_book_suggestion_emails_since(
+        conn,
+        since_iso=_since_iso(DAILY_WINDOW),
+    )
+    return sent_count >= daily_email_limit
+
+
 @router.post("", status_code=201)
 async def create_book_suggestion(request: Request) -> dict[str, Any]:
     store, USE_SQLITE = _get_deps()
@@ -270,6 +321,7 @@ async def create_book_suggestion(request: Request) -> dict[str, Any]:
     if duplicate is not None:
         return _duplicate_response(duplicate.get("id"))
 
+    _enforce_global_daily_store_limit(conn)
     try:
         suggestion_id = insert_book_suggestion(
             conn,
@@ -296,6 +348,20 @@ async def create_book_suggestion(request: Request) -> dict[str, Any]:
     if config is not None:
         row = get_book_suggestion_by_id(conn, suggestion_id)
         if row is not None:
+            if _daily_email_limit_reached(conn):
+                update_book_suggestion_email_state(
+                    conn,
+                    suggestion_id,
+                    email_status="failed",
+                    email_sent_at=None,
+                    email_error="Daily email quota reached before send.",
+                )
+                conn.commit()
+                delivery_status = "failed"
+                return _persisted_delivery_payload(
+                    suggestion_id=suggestion_id,
+                    delivery_status=delivery_status,
+                )
             try:
                 send_book_suggestion_notification(config, suggestion_row=row)
                 update_book_suggestion_email_state(
