@@ -100,7 +100,7 @@ async def get_notes(book_id: int) -> dict:
         raise HTTPException(status_code=404, detail="Book not found.")
 
     rows = conn.execute(
-        "SELECT * FROM notes WHERE source_type = 'book' AND source_id = ? ORDER BY created_at ASC",
+        "SELECT * FROM notes WHERE source_type = 'book' AND source_id = ? ORDER BY created_at DESC, id DESC",
         (book_id,),
     ).fetchall()
 

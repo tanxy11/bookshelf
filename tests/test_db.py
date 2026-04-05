@@ -897,6 +897,26 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(activity[0]["note_type"], "quote")
         self.assertEqual(activity[0]["summary"], "Added a quote from Dune")
 
+    def test_notes_endpoint_returns_newest_first(self):
+        first = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "First note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        second = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "Second note."},
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+
+        notes = self.client.get("/api/books/1/notes").json()["notes"]
+        self.assertEqual(len(notes), 2)
+        self.assertEqual(notes[0]["content"], "Second note.")
+        self.assertEqual(notes[1]["content"], "First note.")
+
     def test_note_update_and_delete_do_not_log_activity(self):
         create = self.client.post(
             "/api/books/1/notes",

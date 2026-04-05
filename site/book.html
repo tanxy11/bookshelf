@@ -179,8 +179,10 @@
     .note-added { animation: note-flash 1.5s ease-out; }
 
     /* Add/Edit note form */
+    #add-note-wrap:not(:empty) { margin-bottom: 24px; }
+
     .note-form-wrap {
-      margin-top: 24px; padding: 20px; border-radius: var(--radius);
+      margin-top: 8px; padding: 20px; border-radius: var(--radius);
       border: 1px solid var(--border);
       background:
         linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(248, 241, 233, 0.9)),
@@ -285,8 +287,8 @@
     </div>
     <div class="section" id="notes-section">
       <h2 class="section-title" id="notes-title">Notes</h2>
-      <div id="notes-list"></div>
       <div id="add-note-wrap"></div>
+      <div id="notes-list"></div>
     </div>
   </div>
 </div>
