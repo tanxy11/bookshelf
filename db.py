@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS notes (
         CHECK (note_type IN ('thought', 'quote', 'connection', 'disagreement', 'question')),
     content TEXT NOT NULL,
     page_or_location TEXT,
+    connected_label TEXT,
+    connected_url TEXT,
     connected_source_type TEXT,
     connected_source_id INTEGER,
     tags TEXT,
@@ -113,11 +115,31 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
     conn.executescript(_ACTIVITY_LOG_SCHEMA)
 
 
+def _migration_v3(conn: sqlite3.Connection) -> None:
+    note_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(notes)").fetchall()
+    }
+    if "connected_label" not in note_columns:
+        conn.execute("ALTER TABLE notes ADD COLUMN connected_label TEXT")
+
+
+def _migration_v4(conn: sqlite3.Connection) -> None:
+    note_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(notes)").fetchall()
+    }
+    if "connected_url" not in note_columns:
+        conn.execute("ALTER TABLE notes ADD COLUMN connected_url TEXT")
+
+
 # ── Migration registry ────────────────────────────────────────────────────────
 
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _migration_v1),
     (2, _migration_v2),
+    (3, _migration_v3),
+    (4, _migration_v4),
 ]
 
 

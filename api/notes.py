@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -38,13 +39,50 @@ def _validate_note_body(body: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
             raise HTTPException(status_code=422, detail="tags must be a list of strings.")
 
-    connected_source_id = body.get("connected_source_id")
-    connected_source_type = "book" if connected_source_id is not None else None
+    connected_label = (body.get("connected_label") or "").strip() or None
+    connected_url = (body.get("connected_url") or "").strip() or None
+    raw_connected_source_id = body.get("connected_source_id")
+    connected_source_id = None
+    if raw_connected_source_id not in (None, ""):
+        try:
+            connected_source_id = int(raw_connected_source_id)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=422,
+                detail="connected_source_id must be a valid book id.",
+            )
+
+    if connected_url is not None:
+        parsed_url = urlparse(connected_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise HTTPException(
+                status_code=422,
+                detail="connected_url must be a valid http or https URL.",
+            )
+
+    if note_type != "connection":
+        connected_source_id = None
+        connected_label = None
+        connected_url = None
+        connected_source_type = None
+    elif connected_source_id is not None:
+        connected_label = None
+        connected_url = None
+        connected_source_type = "book"
+    else:
+        if connected_label is None:
+            raise HTTPException(
+                status_code=422,
+                detail="connection notes require a connected book or label.",
+            )
+        connected_source_type = None
 
     return {
         "note_type": note_type,
         "content": content,
         "page_or_location": body.get("page_or_location"),
+        "connected_label": connected_label,
+        "connected_url": connected_url,
         "connected_source_type": connected_source_type,
         "connected_source_id": connected_source_id,
         "tags": json.dumps(tags, ensure_ascii=False) if tags is not None else None,
@@ -60,6 +98,8 @@ def _row_to_note(row: dict[str, Any]) -> dict[str, Any]:
         "note_type": row["note_type"],
         "content": row["content"],
         "page_or_location": row["page_or_location"],
+        "connected_label": row.get("connected_label"),
+        "connected_url": row.get("connected_url"),
         "connected_source_type": row["connected_source_type"],
         "connected_source_id": row["connected_source_id"],
         "connected_book": None,
@@ -131,16 +171,28 @@ async def create_note(book_id: int, request: Request) -> dict:
     body = await request.json()
     fields = _validate_note_body(body)
 
+    if fields["note_type"] == "connection" and fields["connected_source_id"] is not None:
+        connected_book = conn.execute(
+            "SELECT id FROM books WHERE id = ?",
+            (fields["connected_source_id"],),
+        ).fetchone()
+        if connected_book is None:
+            raise HTTPException(status_code=422, detail="Connected book not found.")
+        if connected_book["id"] == book["id"]:
+            raise HTTPException(status_code=422, detail="A note cannot connect a book to itself.")
+
     try:
         cursor = conn.execute(
             """INSERT INTO notes (source_type, source_id, note_type, content,
-               page_or_location, connected_source_type, connected_source_id, tags)
-               VALUES ('book', ?, ?, ?, ?, ?, ?, ?)""",
+               page_or_location, connected_label, connected_url, connected_source_type, connected_source_id, tags)
+               VALUES ('book', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 book_id,
                 fields["note_type"],
                 fields["content"],
                 fields["page_or_location"],
+                fields["connected_label"],
+                fields["connected_url"],
                 fields["connected_source_type"],
                 fields["connected_source_id"],
                 fields["tags"],
@@ -182,16 +234,28 @@ async def update_note(book_id: int, note_id: int, request: Request) -> dict:
     body = await request.json()
     fields = _validate_note_body(body)
 
+    if fields["note_type"] == "connection" and fields["connected_source_id"] is not None:
+        connected_book = conn.execute(
+            "SELECT id FROM books WHERE id = ?",
+            (fields["connected_source_id"],),
+        ).fetchone()
+        if connected_book is None:
+            raise HTTPException(status_code=422, detail="Connected book not found.")
+        if connected_book["id"] == book_id:
+            raise HTTPException(status_code=422, detail="A note cannot connect a book to itself.")
+
     try:
         conn.execute(
             """UPDATE notes SET note_type = ?, content = ?, page_or_location = ?,
-               connected_source_type = ?, connected_source_id = ?, tags = ?,
+               connected_label = ?, connected_url = ?, connected_source_type = ?, connected_source_id = ?, tags = ?,
                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                WHERE id = ?""",
             (
                 fields["note_type"],
                 fields["content"],
                 fields["page_or_location"],
+                fields["connected_label"],
+                fields["connected_url"],
                 fields["connected_source_type"],
                 fields["connected_source_id"],
                 fields["tags"],
