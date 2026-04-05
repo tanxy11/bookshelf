@@ -146,6 +146,7 @@ Common optional settings:
 - `LLM_CACHE_DATA` — JSON fallback cache path
 - `BOOKSHELF_CORS_ORIGINS`
 - `BOOK_SUGGESTIONS_TO_EMAIL` — inbox destination for suggestion notifications, for example `suggest.book@tanxy.net`
+- `BOOK_SUGGESTION_IP_SALT` — secret used to hash visitor IPs for suggestion abuse protection
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USERNAME`
@@ -250,6 +251,8 @@ This drives both the homepage activity band and the `/log` page.
 The homepage suggestion modal stores each submission in `book_suggestions`.
 
 - every suggestion is saved in SQLite first
+- submissions are rate-limited and duplicate-suppressed before insert
+- the site stores a hashed client IP, not the raw IP address
 - if SMTP is configured, the API also sends a notification email
 - if delivery fails, the suggestion is still kept and marked with `email_status = failed`
 
@@ -310,6 +313,7 @@ Set these in `.env` on local/staging/production as needed:
 
 ```text
 BOOK_SUGGESTIONS_TO_EMAIL=suggest.book@tanxy.net
+BOOK_SUGGESTION_IP_SALT=<random secret>
 SMTP_HOST=<your relay host>
 SMTP_PORT=587
 SMTP_USERNAME=<optional username>

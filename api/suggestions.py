@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+import hashlib
 import logging
+import os
 import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from bookshelf_data import utc_now_iso
 from db import (
+    count_recent_book_suggestions,
+    find_recent_duplicate_book_suggestion,
     get_book_suggestion_by_id,
     insert_book_suggestion,
     update_book_suggestion_email_state,
@@ -23,6 +29,13 @@ router = APIRouter(prefix="/api/book-suggestions")
 logger = logging.getLogger(__name__)
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+WHITESPACE_RE = re.compile(r"\s+")
+SHORT_WINDOW = timedelta(minutes=15)
+SHORT_WINDOW_LIMIT = 3
+DAILY_WINDOW = timedelta(hours=24)
+DAILY_WINDOW_LIMIT = 10
+DUPLICATE_WINDOW = timedelta(days=7)
+FALLBACK_IP_HASH_SALT = "bookshelf-book-suggestions-dev"
 
 
 def _get_deps() -> tuple:
@@ -94,20 +107,140 @@ def _validate_body(body: Any) -> dict[str, str | None]:
     }
 
 
-def _success_payload(*, suggestion_id: int | None = None, delivery_status: str = "pending") -> dict[str, Any]:
-    message = "Thanks — I saved that suggestion."
-    if delivery_status == "sent":
-        message = "Thanks — I saved that suggestion and sent it along."
+def _success_payload(
+    *,
+    suggestion_id: int | None = None,
+    status: str = "saved",
+    delivery_status: str = "pending",
+    message: str | None = None,
+) -> dict[str, Any]:
+    if message is None:
+        message = "Thanks — I saved that suggestion."
+        if delivery_status == "sent":
+            message = "Thanks — I saved that suggestion and sent it along."
+        elif status == "already_saved":
+            message = "Thanks — I already have that suggestion."
 
     payload: dict[str, Any] = {
         "ok": True,
-        "status": "saved",
+        "status": status,
         "delivery_status": delivery_status,
         "message": message,
     }
     if suggestion_id is not None:
         payload["id"] = suggestion_id
     return payload
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _since_iso(window: timedelta) -> str:
+    return (_now_utc() - window).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _normalize_for_fingerprint(value: str | None) -> str:
+    return WHITESPACE_RE.sub(" ", str(value or "").casefold()).strip()
+
+
+def _content_fingerprint(fields: dict[str, str | None]) -> str:
+    normalized = "::".join([
+        _normalize_for_fingerprint(fields.get("book_title")),
+        _normalize_for_fingerprint(fields.get("why")),
+    ])
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _request_ip_salt() -> str:
+    return (
+        (os.getenv("BOOK_SUGGESTION_IP_SALT", "") or "").strip()
+        or (os.getenv("BOOKSHELF_AUTH_TOKEN", "") or "").strip()
+        or FALLBACK_IP_HASH_SALT
+    )
+
+
+def _extract_client_ip(request: Request) -> str:
+    cf_ip = (request.headers.get("cf-connecting-ip", "") or "").strip()
+    if cf_ip:
+        return cf_ip
+
+    forwarded = (request.headers.get("x-forwarded-for", "") or "").strip()
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _client_ip_hash(request: Request) -> str:
+    raw_ip = _extract_client_ip(request)
+    secret = _request_ip_salt()
+    return hashlib.sha256(f"{secret}:{raw_ip}".encode("utf-8")).hexdigest()
+
+
+def _request_user_agent(request: Request) -> str | None:
+    user_agent = (request.headers.get("user-agent", "") or "").strip()
+    if not user_agent:
+        return None
+    return user_agent[:512]
+
+
+def _enforce_rate_limit(conn, *, client_ip_hash: str) -> None:
+    short_count = count_recent_book_suggestions(
+        conn,
+        client_ip_hash=client_ip_hash,
+        since_iso=_since_iso(SHORT_WINDOW),
+    )
+    if short_count >= SHORT_WINDOW_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="That’s a lot at once — please wait a little before sending another suggestion.",
+        )
+
+    daily_count = count_recent_book_suggestions(
+        conn,
+        client_ip_hash=client_ip_hash,
+        since_iso=_since_iso(DAILY_WINDOW),
+    )
+    if daily_count >= DAILY_WINDOW_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="That’s enough for now — please come back later with another recommendation.",
+        )
+
+
+def _existing_duplicate(conn, *, client_ip_hash: str, content_fingerprint: str) -> dict[str, Any] | None:
+    return find_recent_duplicate_book_suggestion(
+        conn,
+        client_ip_hash=client_ip_hash,
+        content_fingerprint=content_fingerprint,
+        since_iso=_since_iso(DUPLICATE_WINDOW),
+    )
+
+
+def _duplicate_response(existing_id: int | None) -> JSONResponse:
+    return JSONResponse(
+        status_code=200,
+        content=_success_payload(
+            suggestion_id=existing_id,
+            status="already_saved",
+            delivery_status="already_saved",
+        ),
+    )
+
+
+def _persisted_delivery_payload(*, suggestion_id: int, delivery_status: str) -> dict[str, Any]:
+    message = "Thanks — I saved that suggestion."
+    if delivery_status == "sent":
+        message = "Thanks — I saved that suggestion and sent it along."
+    return _success_payload(
+        suggestion_id=suggestion_id,
+        status="saved",
+        delivery_status=delivery_status,
+        message=message,
+    )
 
 
 @router.post("", status_code=201)
@@ -124,6 +257,19 @@ async def create_book_suggestion(request: Request) -> dict[str, Any]:
         return _success_payload()
 
     conn = store.conn()
+    client_ip_hash = _client_ip_hash(request)
+    user_agent = _request_user_agent(request)
+    content_fingerprint = _content_fingerprint(fields)
+
+    _enforce_rate_limit(conn, client_ip_hash=client_ip_hash)
+    duplicate = _existing_duplicate(
+        conn,
+        client_ip_hash=client_ip_hash,
+        content_fingerprint=content_fingerprint,
+    )
+    if duplicate is not None:
+        return _duplicate_response(duplicate.get("id"))
+
     try:
         suggestion_id = insert_book_suggestion(
             conn,
@@ -132,6 +278,9 @@ async def create_book_suggestion(request: Request) -> dict[str, Any]:
             why=fields["why"] or "",
             visitor_name=fields["visitor_name"],
             visitor_email=fields["visitor_email"],
+            client_ip_hash=client_ip_hash,
+            user_agent=user_agent,
+            content_fingerprint=content_fingerprint,
         )
         conn.commit()
     except Exception:
@@ -174,4 +323,7 @@ async def create_book_suggestion(request: Request) -> dict[str, Any]:
                     exc,
                 )
 
-    return _success_payload(suggestion_id=suggestion_id, delivery_status=delivery_status)
+    return _persisted_delivery_payload(
+        suggestion_id=suggestion_id,
+        delivery_status=delivery_status,
+    )

@@ -266,17 +266,17 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_5(self):
+    def test_schema_version_is_6(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 5)
+        self.assertEqual(get_schema_version(conn), 6)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 5)
+        self.assertEqual(get_schema_version(conn), 6)
         conn.close()
 
     def test_existing_notes_table_upgrades_cleanly(self):
@@ -324,14 +324,21 @@ class DbSchemaTests(unittest.TestCase):
             row[1]
             for row in conn.execute("PRAGMA table_info(notes)").fetchall()
         }
+        suggestion_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(book_suggestions)").fetchall()
+        }
 
-        self.assertEqual(applied, 4)
-        self.assertEqual(get_schema_version(conn), 5)
+        self.assertEqual(applied, 5)
+        self.assertEqual(get_schema_version(conn), 6)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
         self.assertIn("book_suggestions", tables)
         self.assertIn("connected_label", note_columns)
         self.assertIn("connected_url", note_columns)
+        self.assertIn("client_ip_hash", suggestion_columns)
+        self.assertIn("user_agent", suggestion_columns)
+        self.assertIn("content_fingerprint", suggestion_columns)
         conn.close()
 
     def test_insert_and_list_activity_rows(self):
@@ -394,6 +401,9 @@ class DbSchemaTests(unittest.TestCase):
             why="The taste profile made me think of ambitious, reflective novels.",
             visitor_name="A reader",
             visitor_email="reader@example.com",
+            client_ip_hash="hash123",
+            user_agent="TestAgent/1.0",
+            content_fingerprint="fingerprint123",
         )
         conn.commit()
 
@@ -402,6 +412,9 @@ class DbSchemaTests(unittest.TestCase):
         self.assertEqual(row["book_title"], "The Magic Mountain")
         self.assertEqual(row["email_status"], "pending")
         self.assertEqual(row["visitor_email"], "reader@example.com")
+        self.assertEqual(row["client_ip_hash"], "hash123")
+        self.assertEqual(row["user_agent"], "TestAgent/1.0")
+        self.assertEqual(row["content_fingerprint"], "fingerprint123")
         conn.close()
 
     def test_llm_cache_round_trip(self):
@@ -1092,16 +1105,21 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/activity").json()["items"], [])
 
     def test_create_book_suggestion_persists_row(self):
-        resp = self.client.post(
-            "/api/book-suggestions",
-            json={
-                "book_title": "The Magic Mountain",
-                "book_author": "Thomas Mann",
-                "why": "It feels like it would extend the site’s appetite for reflective, demanding novels.",
-                "visitor_name": "Curious reader",
-                "visitor_email": "reader@example.com",
-            },
-        )
+        with patch("api.suggestions.get_suggestion_email_config", return_value=None):
+            resp = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "The Magic Mountain",
+                    "book_author": "Thomas Mann",
+                    "why": "It feels like it would extend the site’s appetite for reflective, demanding novels.",
+                    "visitor_name": "Curious reader",
+                    "visitor_email": "reader@example.com",
+                },
+                headers={
+                    "CF-Connecting-IP": "203.0.113.7",
+                    "User-Agent": "CodexSuggestionTest/1.0",
+                },
+            )
         self.assertEqual(resp.status_code, 201)
         payload = resp.json()
         self.assertTrue(payload["ok"])
@@ -1115,6 +1133,60 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(row["book_author"], "Thomas Mann")
         self.assertEqual(row["visitor_name"], "Curious reader")
         self.assertEqual(row["email_status"], "pending")
+        self.assertIsNotNone(row["client_ip_hash"])
+        self.assertEqual(row["user_agent"], "CodexSuggestionTest/1.0")
+        self.assertIsNotNone(row["content_fingerprint"])
+        conn.close()
+
+    def test_book_suggestion_duplicate_is_suppressed(self):
+        payload = {
+            "book_title": "The Magic Mountain",
+            "book_author": "Thomas Mann",
+            "why": "It feels like the kind of deliberate, searching novel this shelf would care about.",
+        }
+        headers = {"CF-Connecting-IP": "198.51.100.12"}
+
+        first = self.client.post("/api/book-suggestions", json=payload, headers=headers)
+        second = self.client.post("/api/book-suggestions", json=payload, headers=headers)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["status"], "already_saved")
+
+        conn = get_connection(self.db_path)
+        count = conn.execute("SELECT COUNT(*) FROM book_suggestions").fetchone()[0]
+        self.assertEqual(count, 1)
+        conn.close()
+
+    def test_book_suggestion_rate_limit_blocks_excess_submissions_from_same_ip(self):
+        headers = {"CF-Connecting-IP": "198.51.100.44"}
+
+        for idx in range(3):
+            resp = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": f"Book {idx}",
+                    "why": f"Reason {idx}",
+                },
+                headers=headers,
+            )
+            self.assertEqual(resp.status_code, 201)
+
+        blocked = self.client.post(
+            "/api/book-suggestions",
+            json={
+                "book_title": "Book 4",
+                "why": "Reason 4",
+            },
+            headers=headers,
+        )
+
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn("wait a little", blocked.json()["detail"])
+
+        conn = get_connection(self.db_path)
+        count = conn.execute("SELECT COUNT(*) FROM book_suggestions").fetchone()[0]
+        self.assertEqual(count, 3)
         conn.close()
 
     def test_book_suggestion_marks_email_sent_when_delivery_succeeds(self):
