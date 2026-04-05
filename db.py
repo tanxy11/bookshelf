@@ -118,6 +118,9 @@ CREATE TABLE IF NOT EXISTS book_suggestions (
     why TEXT NOT NULL,
     visitor_name TEXT,
     visitor_email TEXT,
+    client_ip_hash TEXT,
+    user_agent TEXT,
+    content_fingerprint TEXT,
     email_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (email_status IN ('pending', 'sent', 'failed')),
     email_sent_at TEXT,
@@ -129,6 +132,10 @@ CREATE INDEX IF NOT EXISTS idx_book_suggestions_created_at
     ON book_suggestions(created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_book_suggestions_email_status
     ON book_suggestions(email_status);
+CREATE INDEX IF NOT EXISTS idx_book_suggestions_client_ip_created_at
+    ON book_suggestions(client_ip_hash, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_book_suggestions_content_fingerprint_created_at
+    ON book_suggestions(content_fingerprint, created_at DESC);
 """
 
 
@@ -159,6 +166,28 @@ def _migration_v5(conn: sqlite3.Connection) -> None:
     conn.executescript(_BOOK_SUGGESTIONS_SCHEMA)
 
 
+def _migration_v6(conn: sqlite3.Connection) -> None:
+    suggestion_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(book_suggestions)").fetchall()
+    }
+    if "client_ip_hash" not in suggestion_columns:
+        conn.execute("ALTER TABLE book_suggestions ADD COLUMN client_ip_hash TEXT")
+    if "user_agent" not in suggestion_columns:
+        conn.execute("ALTER TABLE book_suggestions ADD COLUMN user_agent TEXT")
+    if "content_fingerprint" not in suggestion_columns:
+        conn.execute("ALTER TABLE book_suggestions ADD COLUMN content_fingerprint TEXT")
+
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_book_suggestions_client_ip_created_at
+           ON book_suggestions(client_ip_hash, created_at DESC)"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_book_suggestions_content_fingerprint_created_at
+           ON book_suggestions(content_fingerprint, created_at DESC)"""
+    )
+
+
 # ── Migration registry ────────────────────────────────────────────────────────
 
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
@@ -167,6 +196,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (3, _migration_v3),
     (4, _migration_v4),
     (5, _migration_v5),
+    (6, _migration_v6),
 ]
 
 
@@ -398,6 +428,9 @@ def insert_book_suggestion(
     book_author: str | None = None,
     visitor_name: str | None = None,
     visitor_email: str | None = None,
+    client_ip_hash: str | None = None,
+    user_agent: str | None = None,
+    content_fingerprint: str | None = None,
     email_status: str = "pending",
     email_sent_at: str | None = None,
     email_error: str | None = None,
@@ -405,14 +438,18 @@ def insert_book_suggestion(
     cursor = conn.execute(
         """INSERT INTO book_suggestions
            (book_title, book_author, why, visitor_name, visitor_email,
+            client_ip_hash, user_agent, content_fingerprint,
             email_status, email_sent_at, email_error)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             book_title,
             book_author,
             why,
             visitor_name,
             visitor_email,
+            client_ip_hash,
+            user_agent,
+            content_fingerprint,
             email_status,
             email_sent_at,
             email_error,
@@ -448,3 +485,70 @@ def update_book_suggestion_email_state(
         (email_status, email_sent_at, email_error, suggestion_id),
     )
     return cursor.rowcount > 0
+
+
+def count_recent_book_suggestions(
+    conn: sqlite3.Connection,
+    *,
+    client_ip_hash: str,
+    since_iso: str,
+) -> int:
+    row = conn.execute(
+        """SELECT COUNT(*)
+           FROM book_suggestions
+           WHERE client_ip_hash = ?
+             AND created_at >= ?""",
+        (client_ip_hash, since_iso),
+    ).fetchone()
+    return int(row[0] or 0)
+
+
+def count_book_suggestions_since(
+    conn: sqlite3.Connection,
+    *,
+    since_iso: str,
+) -> int:
+    row = conn.execute(
+        """SELECT COUNT(*)
+           FROM book_suggestions
+           WHERE created_at >= ?""",
+        (since_iso,),
+    ).fetchone()
+    return int(row[0] or 0)
+
+
+def count_sent_book_suggestion_emails_since(
+    conn: sqlite3.Connection,
+    *,
+    since_iso: str,
+) -> int:
+    row = conn.execute(
+        """SELECT COUNT(*)
+           FROM book_suggestions
+           WHERE email_status = 'sent'
+             AND COALESCE(email_sent_at, created_at) >= ?""",
+        (since_iso,),
+    ).fetchone()
+    return int(row[0] or 0)
+
+
+def find_recent_duplicate_book_suggestion(
+    conn: sqlite3.Connection,
+    *,
+    client_ip_hash: str,
+    content_fingerprint: str,
+    since_iso: str,
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        """SELECT *
+           FROM book_suggestions
+           WHERE client_ip_hash = ?
+             AND content_fingerprint = ?
+             AND created_at >= ?
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1""",
+        (client_ip_hash, content_fingerprint, since_iso),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)

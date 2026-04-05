@@ -266,17 +266,17 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_5(self):
+    def test_schema_version_is_6(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 5)
+        self.assertEqual(get_schema_version(conn), 6)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 5)
+        self.assertEqual(get_schema_version(conn), 6)
         conn.close()
 
     def test_existing_notes_table_upgrades_cleanly(self):
@@ -324,14 +324,21 @@ class DbSchemaTests(unittest.TestCase):
             row[1]
             for row in conn.execute("PRAGMA table_info(notes)").fetchall()
         }
+        suggestion_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(book_suggestions)").fetchall()
+        }
 
-        self.assertEqual(applied, 4)
-        self.assertEqual(get_schema_version(conn), 5)
+        self.assertEqual(applied, 5)
+        self.assertEqual(get_schema_version(conn), 6)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
         self.assertIn("book_suggestions", tables)
         self.assertIn("connected_label", note_columns)
         self.assertIn("connected_url", note_columns)
+        self.assertIn("client_ip_hash", suggestion_columns)
+        self.assertIn("user_agent", suggestion_columns)
+        self.assertIn("content_fingerprint", suggestion_columns)
         conn.close()
 
     def test_insert_and_list_activity_rows(self):
@@ -394,6 +401,9 @@ class DbSchemaTests(unittest.TestCase):
             why="The taste profile made me think of ambitious, reflective novels.",
             visitor_name="A reader",
             visitor_email="reader@example.com",
+            client_ip_hash="hash123",
+            user_agent="TestAgent/1.0",
+            content_fingerprint="fingerprint123",
         )
         conn.commit()
 
@@ -402,6 +412,9 @@ class DbSchemaTests(unittest.TestCase):
         self.assertEqual(row["book_title"], "The Magic Mountain")
         self.assertEqual(row["email_status"], "pending")
         self.assertEqual(row["visitor_email"], "reader@example.com")
+        self.assertEqual(row["client_ip_hash"], "hash123")
+        self.assertEqual(row["user_agent"], "TestAgent/1.0")
+        self.assertEqual(row["content_fingerprint"], "fingerprint123")
         conn.close()
 
     def test_llm_cache_round_trip(self):
@@ -648,15 +661,40 @@ class ApiSqliteTests(unittest.TestCase):
         os.environ.pop("BOOKS_DATA", None)
         os.environ.pop("LLM_CACHE_DATA", None)
         os.environ["BOOKSHELF_CORS_ORIGINS"] = "https://book.tanxy.net"
+        # Never let routine API tests talk to real SMTP. Tests that exercise
+        # delivery behavior should opt in explicitly with mocks.
+        for key in (
+            "BOOK_SUGGESTIONS_TO_EMAIL",
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
+            "SMTP_FROM_EMAIL",
+            "SMTP_USE_STARTTLS",
+            "SMTP_USE_SSL",
+            "SMTP_TIMEOUT_SECONDS",
+        ):
+            os.environ.pop(key, None)
 
         if "api.main" in sys.modules:
             self.api_main = importlib.reload(sys.modules["api.main"])
         else:
             self.api_main = importlib.import_module("api.main")
 
+        self.suggestion_email_config_patcher = patch(
+            "api.suggestions.get_suggestion_email_config",
+            return_value=None,
+        )
+        self.suggestion_email_send_patcher = patch(
+            "api.suggestions.send_book_suggestion_notification",
+        )
+        self.mock_get_suggestion_email_config = self.suggestion_email_config_patcher.start()
+        self.mock_send_book_suggestion_notification = self.suggestion_email_send_patcher.start()
         self.client = TestClient(self.api_main.app)
 
     def tearDown(self):
+        self.suggestion_email_send_patcher.stop()
+        self.suggestion_email_config_patcher.stop()
         os.environ.clear()
         os.environ.update(self.original_env)
         self.tempdir.cleanup()
@@ -1101,12 +1139,17 @@ class ApiSqliteTests(unittest.TestCase):
                 "visitor_name": "Curious reader",
                 "visitor_email": "reader@example.com",
             },
+            headers={
+                "CF-Connecting-IP": "203.0.113.7",
+                "User-Agent": "CodexSuggestionTest/1.0",
+            },
         )
         self.assertEqual(resp.status_code, 201)
         payload = resp.json()
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["status"], "saved")
         self.assertEqual(payload["delivery_status"], "pending")
+        self.mock_send_book_suggestion_notification.assert_not_called()
 
         conn = get_connection(self.db_path)
         row = get_book_suggestion_by_id(conn, payload["id"])
@@ -1115,6 +1158,90 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(row["book_author"], "Thomas Mann")
         self.assertEqual(row["visitor_name"], "Curious reader")
         self.assertEqual(row["email_status"], "pending")
+        self.assertIsNotNone(row["client_ip_hash"])
+        self.assertEqual(row["user_agent"], "CodexSuggestionTest/1.0")
+        self.assertIsNotNone(row["content_fingerprint"])
+        conn.close()
+
+    def test_book_suggestion_duplicate_is_suppressed(self):
+        payload = {
+            "book_title": "The Magic Mountain",
+            "book_author": "Thomas Mann",
+            "why": "It feels like the kind of deliberate, searching novel this shelf would care about.",
+        }
+        headers = {"CF-Connecting-IP": "198.51.100.12"}
+
+        first = self.client.post("/api/book-suggestions", json=payload, headers=headers)
+        second = self.client.post("/api/book-suggestions", json=payload, headers=headers)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["status"], "already_saved")
+
+        conn = get_connection(self.db_path)
+        count = conn.execute("SELECT COUNT(*) FROM book_suggestions").fetchone()[0]
+        self.assertEqual(count, 1)
+        conn.close()
+
+    def test_book_suggestion_rate_limit_blocks_excess_submissions_from_same_ip(self):
+        headers = {"CF-Connecting-IP": "198.51.100.44"}
+
+        for idx in range(3):
+            resp = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": f"Book {idx}",
+                    "why": f"Reason {idx}",
+                },
+                headers=headers,
+            )
+            self.assertEqual(resp.status_code, 201)
+
+        blocked = self.client.post(
+            "/api/book-suggestions",
+            json={
+                "book_title": "Book 4",
+                "why": "Reason 4",
+            },
+            headers=headers,
+        )
+
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn("wait a little", blocked.json()["detail"])
+
+        conn = get_connection(self.db_path)
+        count = conn.execute("SELECT COUNT(*) FROM book_suggestions").fetchone()[0]
+        self.assertEqual(count, 3)
+        conn.close()
+
+    def test_book_suggestion_global_daily_store_limit_blocks_after_limit(self):
+        with patch.dict(os.environ, {"BOOK_SUGGESTION_DAILY_STORE_LIMIT": "2"}):
+            for idx in range(2):
+                resp = self.client.post(
+                    "/api/book-suggestions",
+                    json={
+                        "book_title": f"Daily Book {idx}",
+                        "why": f"Reason {idx}",
+                    },
+                    headers={"CF-Connecting-IP": f"198.51.100.{80 + idx}"},
+                )
+                self.assertEqual(resp.status_code, 201)
+
+            blocked = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "Daily Book 3",
+                    "why": "Reason 3",
+                },
+                headers={"CF-Connecting-IP": "198.51.100.99"},
+            )
+
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn("today", blocked.json()["detail"])
+
+        conn = get_connection(self.db_path)
+        count = conn.execute("SELECT COUNT(*) FROM book_suggestions").fetchone()[0]
+        self.assertEqual(count, 2)
         conn.close()
 
     def test_book_suggestion_marks_email_sent_when_delivery_succeeds(self):
@@ -1140,6 +1267,42 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(row["email_status"], "sent")
         self.assertIsNotNone(row["email_sent_at"])
         self.assertIsNone(row["email_error"])
+        conn.close()
+
+    def test_book_suggestion_daily_email_limit_skips_send_after_limit(self):
+        with patch.dict(os.environ, {"BOOK_SUGGESTION_DAILY_EMAIL_LIMIT": "1"}), patch(
+            "api.suggestions.get_suggestion_email_config",
+            return_value=object(),
+        ), patch("api.suggestions.send_book_suggestion_notification") as send_mock:
+            first = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "First Book",
+                    "why": "Worth the detour.",
+                },
+                headers={"CF-Connecting-IP": "198.51.100.120"},
+            )
+            second = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "Second Book",
+                    "why": "Also worth the detour.",
+                },
+                headers={"CF-Connecting-IP": "198.51.100.121"},
+            )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(first.json()["delivery_status"], "sent")
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(second.json()["delivery_status"], "failed")
+        self.assertEqual(send_mock.call_count, 1)
+
+        conn = get_connection(self.db_path)
+        first_row = get_book_suggestion_by_id(conn, first.json()["id"])
+        second_row = get_book_suggestion_by_id(conn, second.json()["id"])
+        self.assertEqual(first_row["email_status"], "sent")
+        self.assertEqual(second_row["email_status"], "failed")
+        self.assertIn("Daily email quota reached", second_row["email_error"])
         conn.close()
 
     def test_book_suggestion_marks_email_failed_when_delivery_raises(self):
