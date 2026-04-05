@@ -681,9 +681,20 @@ class ApiSqliteTests(unittest.TestCase):
         else:
             self.api_main = importlib.import_module("api.main")
 
+        self.suggestion_email_config_patcher = patch(
+            "api.suggestions.get_suggestion_email_config",
+            return_value=None,
+        )
+        self.suggestion_email_send_patcher = patch(
+            "api.suggestions.send_book_suggestion_notification",
+        )
+        self.mock_get_suggestion_email_config = self.suggestion_email_config_patcher.start()
+        self.mock_send_book_suggestion_notification = self.suggestion_email_send_patcher.start()
         self.client = TestClient(self.api_main.app)
 
     def tearDown(self):
+        self.suggestion_email_send_patcher.stop()
+        self.suggestion_email_config_patcher.stop()
         os.environ.clear()
         os.environ.update(self.original_env)
         self.tempdir.cleanup()
@@ -1119,26 +1130,26 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/activity").json()["items"], [])
 
     def test_create_book_suggestion_persists_row(self):
-        with patch("api.suggestions.get_suggestion_email_config", return_value=None):
-            resp = self.client.post(
-                "/api/book-suggestions",
-                json={
-                    "book_title": "The Magic Mountain",
-                    "book_author": "Thomas Mann",
-                    "why": "It feels like it would extend the site’s appetite for reflective, demanding novels.",
-                    "visitor_name": "Curious reader",
-                    "visitor_email": "reader@example.com",
-                },
-                headers={
-                    "CF-Connecting-IP": "203.0.113.7",
-                    "User-Agent": "CodexSuggestionTest/1.0",
-                },
-            )
+        resp = self.client.post(
+            "/api/book-suggestions",
+            json={
+                "book_title": "The Magic Mountain",
+                "book_author": "Thomas Mann",
+                "why": "It feels like it would extend the site’s appetite for reflective, demanding novels.",
+                "visitor_name": "Curious reader",
+                "visitor_email": "reader@example.com",
+            },
+            headers={
+                "CF-Connecting-IP": "203.0.113.7",
+                "User-Agent": "CodexSuggestionTest/1.0",
+            },
+        )
         self.assertEqual(resp.status_code, 201)
         payload = resp.json()
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["status"], "saved")
         self.assertEqual(payload["delivery_status"], "pending")
+        self.mock_send_book_suggestion_notification.assert_not_called()
 
         conn = get_connection(self.db_path)
         row = get_book_suggestion_by_id(conn, payload["id"])
