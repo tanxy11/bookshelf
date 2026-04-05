@@ -431,3 +431,20 @@ def get_book_suggestion_by_id(
     if row is None:
         return None
     return dict(row)
+
+
+def update_book_suggestion_email_state(
+    conn: sqlite3.Connection,
+    suggestion_id: int,
+    *,
+    email_status: str,
+    email_sent_at: str | None = None,
+    email_error: str | None = None,
+) -> bool:
+    cursor = conn.execute(
+        """UPDATE book_suggestions
+           SET email_status = ?, email_sent_at = ?, email_error = ?
+           WHERE id = ?""",
+        (email_status, email_sent_at, email_error, suggestion_id),
+    )
+    return cursor.rowcount > 0

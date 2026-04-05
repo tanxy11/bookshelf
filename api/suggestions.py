@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
-from db import insert_book_suggestion
+from bookshelf_data import utc_now_iso
+from db import (
+    get_book_suggestion_by_id,
+    insert_book_suggestion,
+    update_book_suggestion_email_state,
+)
+from api.email_delivery import (
+    get_suggestion_email_config,
+    send_book_suggestion_notification,
+)
 
 router = APIRouter(prefix="/api/book-suggestions")
+logger = logging.getLogger(__name__)
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -83,6 +94,22 @@ def _validate_body(body: Any) -> dict[str, str | None]:
     }
 
 
+def _success_payload(*, suggestion_id: int | None = None, delivery_status: str = "pending") -> dict[str, Any]:
+    message = "Thanks — I saved that suggestion."
+    if delivery_status == "sent":
+        message = "Thanks — I saved that suggestion and sent it along."
+
+    payload: dict[str, Any] = {
+        "ok": True,
+        "status": "saved",
+        "delivery_status": delivery_status,
+        "message": message,
+    }
+    if suggestion_id is not None:
+        payload["id"] = suggestion_id
+    return payload
+
+
 @router.post("", status_code=201)
 async def create_book_suggestion(request: Request) -> dict[str, Any]:
     store, USE_SQLITE = _get_deps()
@@ -94,11 +121,7 @@ async def create_book_suggestion(request: Request) -> dict[str, Any]:
 
     # Honeypot for lightweight bot filtering.
     if fields["website"]:
-        return {
-            "ok": True,
-            "status": "saved",
-            "message": "Thanks — I saved that suggestion.",
-        }
+        return _success_payload()
 
     conn = store.conn()
     try:
@@ -115,9 +138,40 @@ async def create_book_suggestion(request: Request) -> dict[str, Any]:
         conn.rollback()
         raise
 
-    return {
-        "ok": True,
-        "id": suggestion_id,
-        "status": "saved",
-        "message": "Thanks — I saved that suggestion.",
-    }
+    delivery_status = "pending"
+    try:
+        config = get_suggestion_email_config()
+    except Exception as exc:
+        logger.warning("Suggestion email delivery is misconfigured: %s", exc)
+        config = None
+    if config is not None:
+        row = get_book_suggestion_by_id(conn, suggestion_id)
+        if row is not None:
+            try:
+                send_book_suggestion_notification(config, suggestion_row=row)
+                update_book_suggestion_email_state(
+                    conn,
+                    suggestion_id,
+                    email_status="sent",
+                    email_sent_at=utc_now_iso(),
+                    email_error=None,
+                )
+                conn.commit()
+                delivery_status = "sent"
+            except Exception as exc:
+                update_book_suggestion_email_state(
+                    conn,
+                    suggestion_id,
+                    email_status="failed",
+                    email_sent_at=None,
+                    email_error=str(exc)[:1000],
+                )
+                conn.commit()
+                delivery_status = "failed"
+                logger.warning(
+                    "Failed to send suggestion email for suggestion_id=%s: %s",
+                    suggestion_id,
+                    exc,
+                )
+
+    return _success_payload(suggestion_id=suggestion_id, delivery_status=delivery_status)

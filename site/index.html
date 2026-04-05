@@ -1962,7 +1962,7 @@
     <div class="suggest-modal-kicker">Reading suggestions</div>
     <h2 class="suggest-modal-title" id="suggest-book-title">Know a book I’d like?</h2>
     <p class="suggest-modal-copy">If something on this page made you think of a title, send it my way. I want this to feel like a conversation with the shelf, not just a backlog dump.</p>
-    <p class="suggest-prototype-note">This first version saves suggestions directly to the site. Email routing will come next, but your recommendation will still be kept.</p>
+    <p class="suggest-prototype-note">Suggestions are saved to the site first. If email delivery is configured, they also get routed straight to my inbox.</p>
 
     <form class="suggest-form" id="suggest-book-form" novalidate>
       <div class="suggest-form-grid">
@@ -2106,7 +2106,7 @@ function resetSuggestionFormState() {
   suggestSuccessEl.classList.add('hidden');
   suggestSuccessPreviewEl.innerHTML = '';
   suggestSuccessTitleEl.textContent = 'Thanks — it’s saved.';
-  suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site. Email routing comes next, but your suggestion is already in the queue.';
+  suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site. If email delivery is configured, it will also be routed to my inbox.';
   suggestSubmitButtonEl.disabled = false;
   suggestSubmitButtonEl.textContent = 'Send suggestion';
 }
@@ -2174,6 +2174,23 @@ function suggestionPayload() {
 function setSuggestionSubmitting(isSubmitting) {
   suggestSubmitButtonEl.disabled = isSubmitting;
   suggestSubmitButtonEl.textContent = isSubmitting ? 'Saving…' : 'Send suggestion';
+}
+
+function applySuggestionDeliveryState(deliveryStatus) {
+  if (deliveryStatus === 'sent') {
+    suggestSuccessTitleEl.textContent = 'Thanks — it’s on its way.';
+    suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site and routed it to my inbox.';
+    return;
+  }
+
+  if (deliveryStatus === 'failed') {
+    suggestSuccessTitleEl.textContent = 'Thanks — it’s saved.';
+    suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site. Email delivery missed this round, but the suggestion is safely kept.';
+    return;
+  }
+
+  suggestSuccessTitleEl.textContent = 'Thanks — it’s saved.';
+  suggestSuccessCopyEl.textContent = 'I’ve saved this recommendation to the site. If email delivery is configured, it will also be routed to my inbox.';
 }
 
 function activityClass(eventType) {
@@ -2844,6 +2861,7 @@ suggestFormEl.addEventListener('submit', async event => {
       throw new Error(detail);
     }
 
+    applySuggestionDeliveryState(payload && payload.delivery_status ? payload.delivery_status : 'pending');
     renderSuggestionPreview();
     suggestFormEl.classList.add('hidden');
     suggestSuccessEl.classList.remove('hidden');

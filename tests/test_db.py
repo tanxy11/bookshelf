@@ -1106,6 +1106,7 @@ class ApiSqliteTests(unittest.TestCase):
         payload = resp.json()
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["status"], "saved")
+        self.assertEqual(payload["delivery_status"], "pending")
 
         conn = get_connection(self.db_path)
         row = get_book_suggestion_by_id(conn, payload["id"])
@@ -1114,6 +1115,56 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(row["book_author"], "Thomas Mann")
         self.assertEqual(row["visitor_name"], "Curious reader")
         self.assertEqual(row["email_status"], "pending")
+        conn.close()
+
+    def test_book_suggestion_marks_email_sent_when_delivery_succeeds(self):
+        with patch("api.suggestions.get_suggestion_email_config", return_value=object()), patch(
+            "api.suggestions.send_book_suggestion_notification"
+        ) as send_mock:
+            resp = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "The Magic Mountain",
+                    "why": "Worth the detour.",
+                    "visitor_email": "reader@example.com",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 201)
+        payload = resp.json()
+        self.assertEqual(payload["delivery_status"], "sent")
+        send_mock.assert_called_once()
+
+        conn = get_connection(self.db_path)
+        row = get_book_suggestion_by_id(conn, payload["id"])
+        self.assertEqual(row["email_status"], "sent")
+        self.assertIsNotNone(row["email_sent_at"])
+        self.assertIsNone(row["email_error"])
+        conn.close()
+
+    def test_book_suggestion_marks_email_failed_when_delivery_raises(self):
+        with patch("api.suggestions.get_suggestion_email_config", return_value=object()), patch(
+            "api.suggestions.send_book_suggestion_notification",
+            side_effect=RuntimeError("smtp unavailable"),
+        ):
+            resp = self.client.post(
+                "/api/book-suggestions",
+                json={
+                    "book_title": "The Magic Mountain",
+                    "why": "Worth the detour.",
+                    "visitor_email": "reader@example.com",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 201)
+        payload = resp.json()
+        self.assertEqual(payload["delivery_status"], "failed")
+
+        conn = get_connection(self.db_path)
+        row = get_book_suggestion_by_id(conn, payload["id"])
+        self.assertEqual(row["email_status"], "failed")
+        self.assertIsNone(row["email_sent_at"])
+        self.assertIn("smtp unavailable", row["email_error"])
         conn.close()
 
     def test_book_suggestion_validates_required_fields_and_email(self):

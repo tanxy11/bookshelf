@@ -42,6 +42,7 @@ In short: this is a personal reading archive with public presentation, not a soc
 - Homepage with:
   - `Reading Life` week-grid visualization
   - `Taste Profile`
+  - a `Know a book I'd like?` suggestion modal in the `Taste Profile` section
   - `Books Read`, `Reading`, `Want to read`, and AI recommendation sections
   - a compact activity band that shows recent changes
 - Individual book pages with review text and typed notes
@@ -66,6 +67,7 @@ In short: this is a personal reading archive with public presentation, not a soc
 - Goodreads CSV import for initial migration
 - SQLite-backed canonical data store
 - Legacy JSON fallback mode when SQLite is not configured
+- visitor-submitted book suggestions stored in SQLite
 - LLM-generated taste profile
 - LLM-generated recommendation columns from Anthropic, OpenAI, and Gemini
 - Activity log entries for milestone events such as adding books, starting/finishing books, and adding notes
@@ -88,7 +90,9 @@ bookshelf/
 │   ├── main.py                # FastAPI app (books, health, lookup, LLM endpoints)
 │   ├── activity.py            # Public activity feed endpoint
 │   ├── auth.py                # Bearer-token auth
+│   ├── email_delivery.py      # SMTP notification helpers
 │   ├── notes.py               # Notes CRUD endpoints
+│   ├── suggestions.py         # Public book-suggestion submission endpoint
 │   ├── google_books.py        # Google Books lookup
 │   ├── sync.py                # Legacy Goodreads RSS sync helpers
 │   └── requirements.txt
@@ -141,6 +145,15 @@ Common optional settings:
 - `BOOKS_DATA` — JSON fallback path when SQLite is not configured
 - `LLM_CACHE_DATA` — JSON fallback cache path
 - `BOOKSHELF_CORS_ORIGINS`
+- `BOOK_SUGGESTIONS_TO_EMAIL` — inbox destination for suggestion notifications, for example `suggest.book@tanxy.net`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM_EMAIL`
+- `SMTP_USE_STARTTLS`
+- `SMTP_USE_SSL`
+- `SMTP_TIMEOUT_SECONDS`
 - `ENVIRONMENT`
 - `LLM_DRY_RUN`
 - `ANTHROPIC_MODEL`
@@ -232,6 +245,16 @@ The site keeps an append-only activity log for public freshness. It currently re
 
 This drives both the homepage activity band and the `/log` page.
 
+### Book suggestions
+
+The homepage suggestion modal stores each submission in `book_suggestions`.
+
+- every suggestion is saved in SQLite first
+- if SMTP is configured, the API also sends a notification email
+- if delivery fails, the suggestion is still kept and marked with `email_status = failed`
+
+This keeps the visitor interaction path durable even when mail delivery is unavailable.
+
 ## API
 
 Public read endpoints:
@@ -245,6 +268,7 @@ GET    /api/health
 GET    /api/lookup?q=...
 GET    /api/llm-status
 GET    /api/books/{id}/notes
+POST   /api/book-suggestions
 ```
 
 Authenticated write endpoints:
@@ -272,6 +296,54 @@ Authorization: Bearer <token>
 ```
 
 Write operations affecting the `read` shelf trigger asynchronous LLM regeneration.
+
+## Suggestion email setup
+
+The book-suggestion flow has two separate pieces:
+
+- the app sends outbound notification mail using SMTP
+- Cloudflare Email Routing forwards the public alias to your real inbox
+
+### App configuration
+
+Set these in `.env` on local/staging/production as needed:
+
+```text
+BOOK_SUGGESTIONS_TO_EMAIL=suggest.book@tanxy.net
+SMTP_HOST=<your relay host>
+SMTP_PORT=587
+SMTP_USERNAME=<optional username>
+SMTP_PASSWORD=<optional password>
+SMTP_FROM_EMAIL=<verified sender address>
+SMTP_USE_STARTTLS=true
+SMTP_USE_SSL=false
+SMTP_TIMEOUT_SECONDS=15
+```
+
+Notes:
+
+- `BOOK_SUGGESTIONS_TO_EMAIL` is the alias that receives suggestion notifications
+- `SMTP_FROM_EMAIL` is the actual sender used by your outbound mail provider
+- Cloudflare Email Routing is not the outbound SMTP provider; it only forwards the destination alias
+
+### Cloudflare Email Routing
+
+For `suggest.book@tanxy.net`, configure Email Routing on the `tanxy.net` zone and add a custom address with local part `suggest.book`.
+
+Recommended setup:
+
+1. Enable Email Routing for `tanxy.net` in Cloudflare.
+2. Create the custom address `suggest.book`.
+3. Forward it to your personal inbox.
+4. Keep the MX and TXT records Cloudflare provisions for Email Routing.
+5. Set `BOOK_SUGGESTIONS_TO_EMAIL=suggest.book@tanxy.net` in the app environment.
+
+Official docs:
+
+- [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/get-started/)
+- [Enable Email Routing](https://developers.cloudflare.com/email-routing/get-started/enable-email-routing/)
+- [Create routing addresses](https://developers.cloudflare.com/email-routing/setup/email-routing-addresses/)
+- [Postmaster notes](https://developers.cloudflare.com/email-routing/postmaster/)
 
 ## Deploy
 
