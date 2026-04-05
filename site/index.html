@@ -98,7 +98,7 @@
     }
 
     header .container {
-      padding: 0 24px;
+      padding: 0;
     }
 
     .masthead {
@@ -117,9 +117,9 @@
       grid-template-columns: minmax(0, 1fr);
       gap: 10px;
       align-items: start;
-      padding: 18px 24px 16px;
+      padding: 26px 30px 18px;
       border: 1px solid var(--border);
-      border-radius: 24px;
+      border-radius: 28px;
       background:
         radial-gradient(circle at top right, rgba(156, 112, 84, 0.08), transparent 34%),
         linear-gradient(145deg, rgba(255, 252, 247, 0.95), rgba(246, 238, 228, 0.88)),
@@ -139,29 +139,6 @@
       pointer-events: none;
     }
 
-    .site-kicker {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 9px;
-      padding: 5px 10px;
-      border: 1px solid rgba(122, 92, 62, 0.18);
-      border-radius: 999px;
-      background: rgba(255, 250, 242, 0.75);
-      color: var(--accent-deep);
-      font-size: .67rem;
-      font-weight: 600;
-      letter-spacing: .05em;
-    }
-
-    .site-kicker::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-    }
-
     .site-title {
       font-family: 'Cormorant Garamond', 'Times New Roman', serif;
       font-size: clamp(2.2rem, 4.2vw, 3.6rem);
@@ -175,10 +152,11 @@
 
     .site-subtitle {
       margin-top: 10px;
-      max-width: 54ch;
+      max-width: none;
       color: var(--muted);
-      font-size: .99rem;
+      font-size: .96rem;
       line-height: 1.68;
+      white-space: nowrap;
     }
 
     .hero-copy {
@@ -1255,30 +1233,8 @@
       background: rgba(255, 255, 255, 0.96);
     }
 
-    .suggest-modal-kicker {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(122, 92, 62, 0.14);
-      background: rgba(255, 250, 243, 0.76);
-      color: var(--accent-deep);
-      font-size: .68rem;
-      font-weight: 600;
-      letter-spacing: .05em;
-    }
-
-    .suggest-modal-kicker::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-    }
-
     .suggest-modal-title {
-      margin-top: 16px;
+      margin-top: 8px;
       font-family: 'Cormorant Garamond', 'Times New Roman', serif;
       font-size: clamp(2rem, 4vw, 2.7rem);
       font-weight: 600;
@@ -1540,6 +1496,10 @@
       .recommendation-grid { grid-template-columns: 1fr; }
       .traits-grid { grid-template-columns: 1fr; }
       .site-title { white-space: normal; }
+      .site-subtitle {
+        max-width: 54ch;
+        white-space: normal;
+      }
       .section-actions { justify-content: flex-start; }
       .suggest-actions {
         align-items: flex-start;
@@ -1549,7 +1509,10 @@
 
     @media (max-width: 640px) {
       header { padding-top: 12px; }
-      header .container,
+      header .container {
+        padding-left: 0;
+        padding-right: 0;
+      }
       .section .container {
         padding-left: 18px;
         padding-right: 18px;
@@ -1792,7 +1755,6 @@
     </div>
     <div class="hero-band">
       <div class="hero-copy">
-        <p class="site-kicker">Personal Library Archive</p>
         <h1 class="site-title">Xinyu’s Bookshelf</h1>
         <p class="site-subtitle">A reading life, and the patterns that emerge when you pay attention long enough.</p>
       </div>
@@ -1967,9 +1929,8 @@
 <div class="suggest-modal-backdrop hidden" id="suggest-book-modal" aria-hidden="true">
   <div class="suggest-modal-shell" role="dialog" aria-modal="true" aria-labelledby="suggest-book-title">
     <button class="suggest-modal-close" id="suggest-book-close-btn" type="button" aria-label="Close suggestion dialog">×</button>
-    <div class="suggest-modal-kicker">Reading suggestions</div>
     <h2 class="suggest-modal-title" id="suggest-book-title">Know a book I’d like?</h2>
-    <p class="suggest-modal-copy">If something on this page made you think of a title, send it my way. I want this to feel like a conversation with the shelf, not just a backlog dump.</p>
+    <p class="suggest-modal-copy">If something on this shelf made you think of a book, send it my way.</p>
     <p class="suggest-prototype-note">A title, a thread, and why it belongs here is plenty.</p>
 
     <form class="suggest-form" id="suggest-book-form" novalidate>
