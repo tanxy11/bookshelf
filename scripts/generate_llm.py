@@ -27,9 +27,13 @@ from pydantic import BaseModel, Field
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bookshelf_data import (
-    compute_books_hash,
+    LLM_TARGET_KEYS,
+    RECOMMENDATION_TARGET_KEYS,
+    compute_llm_input_hash,
     default_books_payload,
     default_llm_cache,
+    default_target_generated_at,
+    default_target_input_hashes,
     env_truthy,
     load_json,
     load_env_file,
@@ -66,7 +70,7 @@ GEMINI_THINKING_LEVEL = (
     os.getenv("GEMINI_THINKING_LEVEL", GEMINI_THINKING_LEVEL).strip().lower() or "medium"
 )
 LLM_DRY_RUN = env_truthy("LLM_DRY_RUN", default=False)
-RECOMMENDATION_PROVIDER_KEYS = ("opus", "gpt45", "gemini")
+RECOMMENDATION_PROVIDER_KEYS = RECOMMENDATION_TARGET_KEYS
 PROVIDER_ALIASES = {
     "claude": "opus",
     "anthropic": "opus",
@@ -77,6 +81,57 @@ PROVIDER_ALIASES = {
     "gpt45": "gpt45",
     "gemini": "gemini",
 }
+
+
+def _selected_targets(
+    selected_providers: set[str] | None,
+    refresh_taste_profile: bool,
+) -> tuple[str, ...]:
+    targets: list[str] = []
+    if refresh_taste_profile:
+        targets.append("taste_profile")
+
+    if selected_providers is None:
+        targets.extend(RECOMMENDATION_PROVIDER_KEYS)
+    else:
+        targets.extend(
+            provider for provider in RECOMMENDATION_PROVIDER_KEYS if provider in selected_providers
+        )
+
+    return tuple(targets)
+
+
+def _is_full_refresh(
+    selected_providers: set[str] | None,
+    refresh_taste_profile: bool,
+) -> bool:
+    if not refresh_taste_profile:
+        return False
+    if selected_providers is None:
+        return True
+    return set(selected_providers) == set(RECOMMENDATION_PROVIDER_KEYS)
+
+
+def _target_input_hashes(cache_payload: dict[str, Any]) -> dict[str, str]:
+    legacy_hash = str(cache_payload.get("llm_input_hash") or cache_payload.get("books_hash") or "")
+    raw = cache_payload.get("target_input_hashes")
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        target: str(raw.get(target) or legacy_hash or "")
+        for target in LLM_TARGET_KEYS
+    }
+
+
+def _target_generated_at(cache_payload: dict[str, Any]) -> dict[str, str | None]:
+    legacy_generated_at = cache_payload.get("generated_at")
+    raw = cache_payload.get("target_generated_at")
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        target: raw.get(target) or legacy_generated_at
+        for target in LLM_TARGET_KEYS
+    }
 
 
 class GeminiRecommendationBook(BaseModel):
@@ -601,7 +656,7 @@ def normalize_provider_selection(raw_values: list[str] | None) -> set[str] | Non
 
 def skip_generation(
     cache_payload: dict[str, Any],
-    books_hash: str,
+    llm_input_hash: str,
     force: bool,
     selected_providers: set[str] | None = None,
     refresh_taste_profile: bool | None = None,
@@ -609,27 +664,23 @@ def skip_generation(
     if refresh_taste_profile is None:
         refresh_taste_profile = selected_providers is None
 
-    if force or cache_payload.get("books_hash") != books_hash:
+    if force:
         return False
 
+    target_input_hashes = _target_input_hashes(cache_payload)
     recommendations = cache_payload.get("recommendations") or {}
     cache_dry_run = bool(cache_payload.get("dry_run"))
     prompt_hash = cache_payload.get("prompt_hash")
     if cache_dry_run != LLM_DRY_RUN or prompt_hash != compute_prompt_hash():
         return False
 
-    if selected_providers is None:
-        if cache_payload.get("partial_refresh"):
-            return False
-        return (
-            (recommendations.get("opus") or {}).get("model") == ANTHROPIC_MODEL
-            and (recommendations.get("gpt45") or {}).get("model") == OPENAI_MODEL
-            and (recommendations.get("gemini") or {}).get("model") == GEMINI_MODEL
-        )
-
     if refresh_taste_profile:
         taste_profile = cache_payload.get("taste_profile") or {}
-        if taste_profile.get("error") or not taste_profile.get("summary"):
+        if (
+            target_input_hashes["taste_profile"] != llm_input_hash
+            or taste_profile.get("error")
+            or not taste_profile.get("summary")
+        ):
             return False
 
     runtime_models = {
@@ -637,8 +688,12 @@ def skip_generation(
         "gpt45": OPENAI_MODEL,
         "gemini": GEMINI_MODEL,
     }
-    for provider in selected_providers:
+    for provider in _selected_targets(selected_providers, refresh_taste_profile):
+        if provider == "taste_profile":
+            continue
         entry = recommendations.get(provider) or {}
+        if target_input_hashes[provider] != llm_input_hash:
+            return False
         if entry.get("model") != runtime_models[provider]:
             return False
         if entry.get("error") or not entry.get("books"):
@@ -657,10 +712,11 @@ async def generate_cache_payload(
     if refresh_taste_profile is None:
         refresh_taste_profile = selected_providers is None
 
-    books_hash = compute_books_hash(books_payload)
+    full_refresh = _is_full_refresh(selected_providers, refresh_taste_profile)
+    llm_input_hash = compute_llm_input_hash(books_payload)
     if skip_generation(
         cache_payload,
-        books_hash,
+        llm_input_hash,
         force,
         selected_providers=selected_providers,
         refresh_taste_profile=refresh_taste_profile,
@@ -683,39 +739,60 @@ async def generate_cache_payload(
         else RECOMMENDATION_PROVIDER_KEYS
     )
 
-    result = (
-        default_llm_cache()
-        if selected_providers is None and refresh_taste_profile
-        else merge_defaults(default_llm_cache(), cache_payload)
-    )
-    result["books_hash"] = books_hash
-    result["generated_at"] = utc_now_iso()
-    result["dry_run"] = LLM_DRY_RUN
-    result["prompt_hash"] = compute_prompt_hash()
-    result["partial_refresh"] = not (selected_providers is None and refresh_taste_profile)
+    result = merge_defaults(default_llm_cache(), cache_payload)
+    current_generated_at = utc_now_iso()
+    target_input_hashes = {
+        **default_target_input_hashes(),
+        **_target_input_hashes(cache_payload),
+    }
+    target_generated_at = {
+        **default_target_generated_at(),
+        **_target_generated_at(cache_payload),
+    }
+    result["target_input_hashes"] = target_input_hashes
+    result["target_generated_at"] = target_generated_at
     runtime_models = {
         "opus": ANTHROPIC_MODEL,
         "gpt45": OPENAI_MODEL,
         "gemini": GEMINI_MODEL,
     }
-    for provider in target_providers:
-        result["recommendations"][provider]["model"] = runtime_models[provider]
+    successful_targets: set[str] = set()
+
+    def mark_target_success(target: str) -> None:
+        target_input_hashes[target] = llm_input_hash
+        target_generated_at[target] = current_generated_at
+        successful_targets.add(target)
+
+    def finalize_metadata() -> None:
+        if not successful_targets:
+            return
+        result["books_hash"] = llm_input_hash
+        result["llm_input_hash"] = llm_input_hash
+        result["generated_at"] = current_generated_at
+        result["dry_run"] = LLM_DRY_RUN
+        result["prompt_hash"] = compute_prompt_hash()
+        result["partial_refresh"] = not full_refresh
 
     if LLM_DRY_RUN:
         if refresh_taste_profile:
             result["taste_profile"] = build_mock_taste_profile()
+            mark_target_success("taste_profile")
         if "opus" in target_providers:
             result["recommendations"]["opus"] = build_mock_recommendations(
                 ANTHROPIC_MODEL, "Anthropic"
             )
+            mark_target_success("opus")
         if "gpt45" in target_providers:
             result["recommendations"]["gpt45"] = build_mock_recommendations(
                 OPENAI_MODEL, "OpenAI"
             )
+            mark_target_success("gpt45")
         if "gemini" in target_providers:
             result["recommendations"]["gemini"] = build_mock_recommendations(
                 GEMINI_MODEL, "Gemini"
             )
+            mark_target_success("gemini")
+        finalize_metadata()
         return result, False
 
     timeout = httpx.Timeout(REQUEST_TIMEOUT_SECONDS)
@@ -730,16 +807,19 @@ async def generate_cache_payload(
                         anthropic_key,
                         debug_info=taste_profile_debug,
                     )
+                    mark_target_success("taste_profile")
                 except Exception as exc:  # noqa: BLE001
-                    result["taste_profile"] = {"error": str(exc), "model": ANTHROPIC_MODEL}
+                    if full_refresh:
+                        result["taste_profile"] = {"error": str(exc), "model": ANTHROPIC_MODEL}
                     taste_profile_debug["error"] = str(exc)
                     if isinstance(exc, ProviderResponseError):
                         taste_profile_debug.update(exc.debug_info)
             else:
-                result["taste_profile"] = {
-                    "error": "ANTHROPIC_API_KEY is not set.",
-                    "model": ANTHROPIC_MODEL,
-                }
+                if full_refresh:
+                    result["taste_profile"] = {
+                        "error": "ANTHROPIC_API_KEY is not set.",
+                        "model": ANTHROPIC_MODEL,
+                    }
                 taste_profile_debug["error"] = "ANTHROPIC_API_KEY is not set."
             result["debug"]["taste_profile"] = taste_profile_debug
 
@@ -789,10 +869,11 @@ async def generate_cache_payload(
             if api_key:
                 recommendation_tasks.append((provider, factory(), runtime_models[provider]))
             else:
-                result["recommendations"][provider] = {
-                    "model": runtime_models[provider],
-                    "error": missing_message,
-                }
+                if full_refresh:
+                    result["recommendations"][provider] = {
+                        "model": runtime_models[provider],
+                        "error": missing_message,
+                    }
                 recommendation_debug[provider]["error"] = missing_message
                 recommendation_tasks.append((provider, None, runtime_models[provider]))
 
@@ -806,17 +887,20 @@ async def generate_cache_payload(
             response = responses[response_index]
             response_index += 1
             if isinstance(response, Exception):
-                result["recommendations"][provider_key] = {
-                    "model": model_name,
-                    "error": str(response),
-                }
+                if full_refresh:
+                    result["recommendations"][provider_key] = {
+                        "model": model_name,
+                        "error": str(response),
+                    }
                 recommendation_debug[provider_key]["error"] = str(response)
                 if isinstance(response, ProviderResponseError):
                     recommendation_debug[provider_key].update(response.debug_info)
             else:
                 result["recommendations"][provider_key] = response
+                mark_target_success(provider_key)
             result["debug"]["recommendations"][provider_key] = recommendation_debug[provider_key]
 
+    finalize_metadata()
     return result, False
 
 
@@ -826,10 +910,13 @@ def _save_llm_cache_to_db(conn: Any, payload: dict[str, Any]) -> None:
 
     set_llm_cache_value(conn, "metadata", {
         "books_hash": payload.get("books_hash", ""),
+        "llm_input_hash": payload.get("llm_input_hash") or payload.get("books_hash", ""),
         "generated_at": payload.get("generated_at"),
         "dry_run": payload.get("dry_run", False),
         "prompt_hash": payload.get("prompt_hash", ""),
         "partial_refresh": payload.get("partial_refresh", False),
+        "target_input_hashes": payload.get("target_input_hashes", {}),
+        "target_generated_at": payload.get("target_generated_at", {}),
     })
     set_llm_cache_value(conn, "debug", payload.get("debug", {}))
     set_llm_cache_value(conn, "taste_profile", payload.get("taste_profile", {}))
