@@ -66,9 +66,22 @@ def default_books_payload() -> dict[str, Any]:
     }
 
 
+LLM_TARGET_KEYS = ("taste_profile", "opus", "gpt45", "gemini")
+RECOMMENDATION_TARGET_KEYS = ("opus", "gpt45", "gemini")
+
+
+def default_target_input_hashes() -> dict[str, str]:
+    return {target: "" for target in LLM_TARGET_KEYS}
+
+
+def default_target_generated_at() -> dict[str, str | None]:
+    return {target: None for target in LLM_TARGET_KEYS}
+
+
 def default_llm_cache() -> dict[str, Any]:
     return {
         "books_hash": "",
+        "llm_input_hash": "",
         "generated_at": None,
         "dry_run": False,
         "prompt_hash": "",
@@ -77,6 +90,8 @@ def default_llm_cache() -> dict[str, Any]:
             "taste_profile": {},
             "recommendations": {},
         },
+        "target_input_hashes": default_target_input_hashes(),
+        "target_generated_at": default_target_generated_at(),
         "taste_profile": {},
         "recommendations": {
             "opus": {"model": None},
@@ -141,6 +156,109 @@ def compute_books_hash(books_payload: dict[str, Any] | list[dict[str, Any]]) -> 
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _llm_input_hash_entry(book: dict[str, Any]) -> list[Any]:
+    return [
+        (book.get("title") or "").strip(),
+        (book.get("author") or "").strip(),
+        int(book.get("my_rating") or 0),
+        (book.get("my_review") or book.get("review") or "").strip(),
+    ]
+
+
+def compute_llm_input_hash(books_payload: dict[str, Any] | list[dict[str, Any]]) -> str:
+    if isinstance(books_payload, dict):
+        read_books = books_payload.get("books", {}).get("read", [])
+    else:
+        read_books = books_payload
+
+    fingerprint = sorted(_llm_input_hash_entry(book) for book in read_books)
+    payload = json.dumps(fingerprint, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _cached_llm_input_hash(llm_cache: dict[str, Any]) -> str:
+    return str(llm_cache.get("llm_input_hash") or llm_cache.get("books_hash") or "")
+
+
+def _cached_target_input_hashes(llm_cache: dict[str, Any]) -> dict[str, str]:
+    legacy_hash = _cached_llm_input_hash(llm_cache)
+    raw = llm_cache.get("target_input_hashes")
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        target: str(raw.get(target) or legacy_hash or "")
+        for target in LLM_TARGET_KEYS
+    }
+
+
+def _cached_target_generated_at(llm_cache: dict[str, Any]) -> dict[str, str | None]:
+    legacy_generated_at = llm_cache.get("generated_at")
+    raw = llm_cache.get("target_generated_at")
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        target: raw.get(target) or legacy_generated_at
+        for target in LLM_TARGET_KEYS
+    }
+
+
+def build_health_payload(books_payload: dict[str, Any], llm_cache: dict[str, Any]) -> dict[str, Any]:
+    has_books = bool(books_payload.get("books", {}).get("read"))
+    taste_profile = llm_cache.get("taste_profile")
+    recommendations = llm_cache.get("recommendations")
+    has_taste_profile = successful_taste_profile(llm_cache) is not None
+    has_recommendations = successful_recommendations(llm_cache) is not None
+    current_llm_input_hash = compute_llm_input_hash(books_payload)
+    target_input_hashes = _cached_target_input_hashes(llm_cache)
+    target_generated_at = _cached_target_generated_at(llm_cache)
+    llm_targets: dict[str, dict[str, Any]] = {}
+
+    for target in LLM_TARGET_KEYS:
+        if target == "taste_profile":
+            entry = taste_profile if isinstance(taste_profile, dict) else {}
+            has_content = has_taste_profile
+        else:
+            entry = (
+                recommendations.get(target)
+                if isinstance(recommendations, dict) and isinstance(recommendations.get(target), dict)
+                else {}
+            )
+            has_content = bool(entry.get("books"))
+
+        has_error = bool(entry.get("error"))
+        target_hash = target_input_hashes.get(target, "")
+        outdated = has_books and (
+            not target_hash
+            or target_hash != current_llm_input_hash
+            or not has_content
+            or has_error
+        )
+        llm_targets[target] = {
+            "outdated": outdated,
+            "generated_at": target_generated_at.get(target),
+            "has_content": has_content,
+            "has_error": has_error,
+        }
+
+    llm_outdated = any(target["outdated"] for target in llm_targets.values()) if has_books else False
+
+    return {
+        "status": "ok",
+        "generated_at": llm_cache.get("generated_at") or books_payload.get("generated_at"),
+        "books_generated_at": books_payload.get("generated_at"),
+        "llm_generated_at": llm_cache.get("generated_at"),
+        "books_hash": llm_cache.get("books_hash"),
+        "llm_input_hash": _cached_llm_input_hash(llm_cache),
+        "current_llm_input_hash": current_llm_input_hash,
+        "llm_outdated": llm_outdated,
+        "llm_targets": llm_targets,
+        "dry_run": bool(llm_cache.get("dry_run")),
+        "has_books": has_books,
+        "has_taste_profile": has_taste_profile,
+        "has_recommendations": has_recommendations,
+    }
+
+
 def successful_taste_profile(cache: dict[str, Any]) -> dict[str, Any] | None:
     profile = cache.get("taste_profile")
     if not isinstance(profile, dict) or profile.get("error"):
@@ -199,17 +317,7 @@ class BookshelfStore:
     def health(self) -> dict[str, Any]:
         books_payload = self.books()
         llm_cache = self.llm_cache()
-        return {
-            "status": "ok",
-            "generated_at": llm_cache.get("generated_at") or books_payload.get("generated_at"),
-            "books_generated_at": books_payload.get("generated_at"),
-            "llm_generated_at": llm_cache.get("generated_at"),
-            "books_hash": llm_cache.get("books_hash"),
-            "dry_run": bool(llm_cache.get("dry_run")),
-            "has_books": bool(books_payload.get("books", {}).get("read")),
-            "has_taste_profile": self.taste_profile() is not None,
-            "has_recommendations": self.recommendations() is not None,
-        }
+        return build_health_payload(books_payload, llm_cache)
 
 
 class BookshelfDB:
@@ -340,13 +448,34 @@ class BookshelfDB:
             "gpt45": {"model": None},
             "gemini": {"model": None},
         }
+        legacy_hash = metadata.get("llm_input_hash", metadata.get("books_hash", ""))
+        legacy_generated_at = metadata.get("generated_at")
+        raw_target_input_hashes = (
+            metadata.get("target_input_hashes")
+            if isinstance(metadata.get("target_input_hashes"), dict)
+            else {}
+        )
+        raw_target_generated_at = (
+            metadata.get("target_generated_at")
+            if isinstance(metadata.get("target_generated_at"), dict)
+            else {}
+        )
 
         return {
             "books_hash": metadata.get("books_hash", ""),
+            "llm_input_hash": legacy_hash,
             "generated_at": metadata.get("generated_at"),
             "dry_run": metadata.get("dry_run", False),
             "prompt_hash": metadata.get("prompt_hash", ""),
             "partial_refresh": metadata.get("partial_refresh", False),
+            "target_input_hashes": {
+                target: str(raw_target_input_hashes.get(target) or legacy_hash or "")
+                for target in LLM_TARGET_KEYS
+            },
+            "target_generated_at": {
+                target: raw_target_generated_at.get(target) or legacy_generated_at
+                for target in LLM_TARGET_KEYS
+            },
             "debug": debug,
             "taste_profile": taste_profile,
             "recommendations": recommendations,
@@ -361,14 +490,4 @@ class BookshelfDB:
     def health(self) -> dict[str, Any]:
         books_payload = self.books()
         llm_cache = self.llm_cache()
-        return {
-            "status": "ok",
-            "generated_at": llm_cache.get("generated_at") or books_payload.get("generated_at"),
-            "books_generated_at": books_payload.get("generated_at"),
-            "llm_generated_at": llm_cache.get("generated_at"),
-            "books_hash": llm_cache.get("books_hash"),
-            "dry_run": bool(llm_cache.get("dry_run")),
-            "has_books": bool(books_payload.get("books", {}).get("read")),
-            "has_taste_profile": self.taste_profile() is not None,
-            "has_recommendations": self.recommendations() is not None,
-        }
+        return build_health_payload(books_payload, llm_cache)

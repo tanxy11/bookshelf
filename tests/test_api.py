@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import json
 import os
@@ -5,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 try:
     from fastapi.testclient import TestClient
@@ -112,6 +113,11 @@ class ApiTests(unittest.TestCase):
         self.assertFalse(payload["dry_run"])
         self.assertTrue(payload["has_taste_profile"])
         self.assertTrue(payload["has_recommendations"])
+        self.assertTrue(payload["llm_outdated"])
+        self.assertEqual(payload["llm_targets"]["taste_profile"]["generated_at"], "2026-03-22T13:00:00Z")
+        self.assertTrue(payload["llm_targets"]["taste_profile"]["has_content"])
+        self.assertTrue(payload["llm_targets"]["gpt45"]["outdated"])
+        self.assertTrue(payload["llm_targets"]["opus"]["has_content"])
 
     def test_activity_endpoint_returns_empty_on_json_backend(self):
         response = self.client.get("/api/activity")
@@ -153,6 +159,103 @@ class ApiTests(unittest.TestCase):
 
         resp = client.delete("/api/books/1", headers=headers)
         self.assertEqual(resp.status_code, 400)
+
+
+@unittest.skipIf(TestClient is None, "fastapi is not installed")
+class SqliteApiTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tempdir.name) / "bookshelf.db"
+        self.original_env = os.environ.copy()
+        os.environ["DB_PATH"] = str(self.db_path)
+        os.environ["BOOKSHELF_AUTH_TOKEN"] = "test-token"
+        os.environ["BOOKSHELF_CORS_ORIGINS"] = "https://book.tanxy.net"
+
+        from db import get_connection, insert_book, run_migrations
+
+        conn = get_connection(self.db_path)
+        run_migrations(conn)
+        insert_book(
+            conn,
+            {
+                "title": "Book A",
+                "author": "Author One",
+                "my_rating": 5,
+                "date_read": "2026-03-10",
+                "date_added": "2026-03-10",
+                "shelves": ["history"],
+                "exclusive_shelf": "read",
+                "review": "Loved it.",
+            },
+        )
+        conn.commit()
+        conn.close()
+
+        if "api.main" in sys.modules:
+            self.api_main = importlib.reload(sys.modules["api.main"])
+        else:
+            self.api_main = importlib.import_module("api.main")
+
+        self.client = TestClient(self.api_main.app)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.original_env)
+        self.tempdir.cleanup()
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": "Bearer test-token"}
+
+    def test_llm_status_returns_targets_when_present(self):
+        self.api_main._llm_status = {
+            "status": "running",
+            "targets": ["gpt45"],
+            "started_at": "2026-03-22T15:00:00Z",
+        }
+
+        response = self.client.get("/api/llm-status")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["targets"], ["gpt45"])
+
+    def test_llm_regenerate_accepts_target_list(self):
+        captured: dict[str, object] = {}
+
+        def fake_create_task(coro):
+            captured["coro"] = coro
+            return object()
+
+        run_mock = AsyncMock()
+        with (
+            patch.object(self.api_main, "_run_llm_regeneration", run_mock),
+            patch.object(self.api_main.asyncio, "create_task", side_effect=fake_create_task),
+        ):
+            response = self.client.post(
+                "/api/llm/regenerate",
+                headers=self._headers(),
+                json={"force": False, "targets": ["gpt45"]},
+            )
+            self.assertIn("coro", captured)
+            asyncio.run(captured["coro"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["targets"], ["gpt45"])
+        run_mock.assert_awaited_once_with(force=False, targets=("gpt45",))
+
+    def test_llm_regenerate_rejects_empty_or_unknown_targets(self):
+        empty_response = self.client.post(
+            "/api/llm/regenerate",
+            headers=self._headers(),
+            json={"targets": []},
+        )
+        invalid_response = self.client.post(
+            "/api/llm/regenerate",
+            headers=self._headers(),
+            json={"targets": ["unknown-model"]},
+        )
+
+        self.assertEqual(empty_response.status_code, 422)
+        self.assertEqual(invalid_response.status_code, 422)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT_DIR))
 from bookshelf_data import (
     BookshelfDB,
     BookshelfStore,
+    LLM_TARGET_KEYS,
     load_env_file,
     utc_now_iso,
 )
@@ -133,48 +134,119 @@ _llm_lock = asyncio.Lock()
 _llm_status: dict = {"status": "idle"}
 
 
-async def _run_llm_regeneration(force: bool = False) -> None:
+def _normalize_llm_targets(raw_value: object) -> tuple[str, ...] | None:
+    if raw_value is None:
+        return None
+    if not isinstance(raw_value, list) or not raw_value:
+        raise HTTPException(status_code=422, detail="targets must be a non-empty list.")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_target in raw_value:
+        target = str(raw_target or "").strip()
+        if target not in LLM_TARGET_KEYS:
+            valid = ", ".join(LLM_TARGET_KEYS)
+            raise HTTPException(status_code=422, detail=f"Unknown LLM target '{target}'. Valid values: {valid}")
+        if target in seen:
+            continue
+        seen.add(target)
+        normalized.append(target)
+
+    if not normalized:
+        raise HTTPException(status_code=422, detail="targets must be a non-empty list.")
+    return tuple(normalized)
+
+
+def _llm_target_errors(payload: dict, targets: tuple[str, ...]) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    debug_payload = payload.get("debug") if isinstance(payload.get("debug"), dict) else {}
+
+    if "taste_profile" in targets:
+        taste_debug = debug_payload.get("taste_profile") if isinstance(debug_payload, dict) else {}
+        if isinstance(taste_debug, dict) and taste_debug.get("error"):
+            errors["taste_profile"] = str(taste_debug["error"])
+
+    recommendation_debug = (
+        debug_payload.get("recommendations")
+        if isinstance(debug_payload, dict) and isinstance(debug_payload.get("recommendations"), dict)
+        else {}
+    )
+    for target in targets:
+        if target == "taste_profile":
+            continue
+        entry = recommendation_debug.get(target) if isinstance(recommendation_debug, dict) else {}
+        if isinstance(entry, dict) and entry.get("error"):
+            errors[target] = str(entry["error"])
+
+    return errors
+
+
+async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | None = None) -> None:
     global _llm_status
+    selected_targets = targets or tuple(LLM_TARGET_KEYS)
     if not USE_SQLITE:
-        _llm_status = {"status": "error", "error": "LLM regeneration requires SQLite backend."}
+        _llm_status = {
+            "status": "error",
+            "error": "LLM regeneration requires SQLite backend.",
+            "targets": list(selected_targets),
+        }
         return
 
-    _llm_status = {"status": "running", "started_at": utc_now_iso()}
+    _llm_status = {
+        "status": "running",
+        "started_at": utc_now_iso(),
+        "targets": list(selected_targets),
+    }
     try:
         books_payload = store.books()
         cache_payload = store.llm_cache()
 
         from scripts.generate_llm import generate_cache_payload, _save_llm_cache_to_db
 
-        generated, skipped = await generate_cache_payload(books_payload, cache_payload, force=force)
+        selected_providers = None if targets is None else {target for target in selected_targets if target != "taste_profile"}
+        refresh_taste_profile = None if targets is None else "taste_profile" in selected_targets
+        generated, skipped = await generate_cache_payload(
+            books_payload,
+            cache_payload,
+            force=force,
+            selected_providers=selected_providers,
+            refresh_taste_profile=refresh_taste_profile,
+        )
         if skipped:
-            _llm_status = {"status": "idle", "skipped": True, "books_hash": generated.get("books_hash")}
+            _llm_status = {
+                "status": "idle",
+                "skipped": True,
+                "books_hash": generated.get("books_hash"),
+                "targets": list(selected_targets),
+            }
             return
 
         _save_llm_cache_to_db(store.conn(), generated)
+        target_errors = _llm_target_errors(generated, selected_targets)
+        if target_errors:
+            _llm_status = {
+                "status": "error",
+                "error": "; ".join(f"{target}: {message}" for target, message in target_errors.items()),
+                "errors": target_errors,
+                "failed_at": utc_now_iso(),
+                "books_hash": generated.get("books_hash"),
+                "targets": list(selected_targets),
+            }
+            return
+
         _llm_status = {
             "status": "idle",
             "completed_at": utc_now_iso(),
             "books_hash": generated.get("books_hash"),
+            "targets": list(selected_targets),
         }
     except Exception as exc:
-        _llm_status = {"status": "error", "error": str(exc), "failed_at": utc_now_iso()}
-
-
-def _maybe_trigger_llm_regen(shelf: str) -> None:
-    """Fire-and-forget LLM regeneration if a write touched the read shelf."""
-    if shelf != "read" or not USE_SQLITE or _llm_lock.locked():
-        return
-
-    async def _run() -> None:
-        async with _llm_lock:
-            await _run_llm_regeneration()
-
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_run())
-    except RuntimeError:
-        pass
+        _llm_status = {
+            "status": "error",
+            "error": str(exc),
+            "failed_at": utc_now_iso(),
+            "targets": list(selected_targets),
+        }
 
 
 # ── Read endpoints ───────────────────────────────────────────────────────────
@@ -267,7 +339,6 @@ async def create_book(request: Request) -> dict:
         conn.rollback()
         raise
 
-    _maybe_trigger_llm_regen(shelf)
     return book
 
 
@@ -309,8 +380,6 @@ async def update_book_endpoint(book_id: int, request: Request) -> dict:
         conn.rollback()
         raise
 
-    if old_shelf == "read" or new_shelf == "read":
-        _maybe_trigger_llm_regen("read")
     return updated
 
 
@@ -326,7 +395,6 @@ async def delete_book_endpoint(book_id: int, request: Request) -> dict:
     if existing is None:
         raise HTTPException(status_code=404, detail="Book not found.")
 
-    shelf = existing.get("exclusive_shelf", "")
     conn = store.conn()
     try:
         delete_book(conn, book_id)
@@ -334,7 +402,6 @@ async def delete_book_endpoint(book_id: int, request: Request) -> dict:
     except Exception:
         conn.rollback()
         raise
-    _maybe_trigger_llm_regen(shelf)
 
     return {"deleted": True, "id": book_id}
 
@@ -378,18 +445,21 @@ async def llm_regenerate(request: Request) -> dict:
         raise HTTPException(status_code=409, detail="LLM regeneration is already running.")
 
     force = False
+    targets: tuple[str, ...] | None = None
     try:
         body = await request.json()
-        force = bool(body.get("force"))
     except Exception:
-        pass
+        body = {}
+    if isinstance(body, dict):
+        force = bool(body.get("force"))
+        targets = _normalize_llm_targets(body.get("targets"))
 
     async def _run() -> None:
         async with _llm_lock:
-            await _run_llm_regeneration(force=force)
+            await _run_llm_regeneration(force=force, targets=targets)
 
     asyncio.create_task(_run())
-    return {"status": "started"}
+    return {"status": "started", "targets": list(targets or LLM_TARGET_KEYS)}
 
 
 # ── Health endpoint ──────────────────────────────────────────────────────────

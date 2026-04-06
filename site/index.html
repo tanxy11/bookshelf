@@ -541,6 +541,17 @@
       max-width: 78ch;
     }
 
+    .taste-empty-state {
+      margin-top: 18px;
+      padding: 18px 16px;
+      border: 1px dashed rgba(122, 92, 62, 0.24);
+      border-radius: 18px;
+      background: rgba(255, 252, 247, 0.58);
+      color: var(--muted);
+      font-size: .86rem;
+      line-height: 1.6;
+    }
+
     .taste-preview-shell.is-hidden {
       display: none;
     }
@@ -645,9 +656,31 @@
 
     .column-header {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 12px;
+      align-items: flex-start;
+    }
+
+    .column-header-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .column-title-row {
+      display: flex;
       align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .column-admin-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .column-title {
@@ -1186,6 +1219,12 @@
       display: flex;
       gap: 8px;
       align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .admin-section-actions {
+      display: none;
     }
 
     .admin-btn {
@@ -1203,10 +1242,64 @@
       transition: background .14s, border-color .14s, transform .14s;
     }
 
+    .admin-btn:disabled {
+      opacity: .58;
+      cursor: default;
+      transform: none;
+    }
+
     .admin-btn:hover {
       background: rgba(122, 92, 62, 0.1);
       border-color: var(--border-strong);
       transform: translateY(-1px);
+    }
+
+    .admin-btn:disabled:hover {
+      background: rgba(255, 250, 243, 0.8);
+      border-color: var(--border);
+      transform: none;
+    }
+
+    .admin-btn.is-compact {
+      padding: 6px 11px;
+      font-size: .72rem;
+    }
+
+    .admin-llm-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 250, 243, 0.78);
+      color: var(--muted);
+      font-size: .74rem;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .admin-llm-status.is-current {
+      color: #365847;
+      background: rgba(109, 144, 120, 0.13);
+      border-color: rgba(109, 144, 120, 0.3);
+    }
+
+    .admin-llm-status.is-stale {
+      color: #7a4d1f;
+      background: rgba(201, 151, 83, 0.14);
+      border-color: rgba(201, 151, 83, 0.34);
+    }
+
+    .admin-llm-status.is-running {
+      color: #5e4d79;
+      background: rgba(131, 114, 171, 0.14);
+      border-color: rgba(131, 114, 171, 0.3);
+    }
+
+    .admin-llm-status.is-error {
+      color: #8b3e36;
+      background: rgba(180, 96, 86, 0.14);
+      border-color: rgba(180, 96, 86, 0.3);
     }
 
     .book-card .edit-icon {
@@ -1516,6 +1609,10 @@
     }
 
     body.authed .book-card .edit-icon {
+      display: flex;
+    }
+
+    body.authed .admin-section-actions {
       display: flex;
     }
 
@@ -1848,10 +1945,22 @@
       <div>
         <h2 class="section-heading">Taste Profile</h2>
       </div>
+      <div class="section-actions admin-section-actions">
+        <span class="admin-llm-status" data-llm-chip-targets="taste_profile" data-llm-chip-style="full"></span>
+        <button
+          class="admin-btn admin-llm-btn"
+          type="button"
+          data-llm-targets="taste_profile"
+          data-default-label="Refresh taste profile"
+        >
+          Refresh taste profile
+        </button>
+      </div>
     </div>
     <div class="taste-invite-row">
       <button class="taste-suggest-btn" id="suggest-book-open-btn" type="button">Know a book I’d like?</button>
     </div>
+    <div class="taste-empty-state hidden" id="taste-empty-state"></div>
     <div class="taste-preview-shell" id="taste-preview-shell">
       <p class="taste-preview" id="taste-preview"></p>
       <button class="taste-inline-toggle" id="taste-toggle" type="button">Read the full sketch</button>
@@ -1881,7 +1990,6 @@
       </div>
       <div class="admin-actions hidden" id="admin-actions">
         <a class="admin-btn" href="add.html">+ Add Book</a>
-        <button class="admin-btn" id="regenerate-btn">Regenerate LLM</button>
       </div>
     </div>
 
@@ -1957,6 +2065,17 @@
       <div>
         <h2 class="section-heading">AI Picks</h2>
         <p class="section-subtitle">Three models, one shelf, and a chance to see where they agree or diverge.</p>
+      </div>
+      <div class="section-actions admin-section-actions">
+        <span class="admin-llm-status" data-llm-chip-targets="opus,gpt45,gemini" data-llm-chip-style="full"></span>
+        <button
+          class="admin-btn admin-llm-btn"
+          type="button"
+          data-llm-targets="opus,gpt45,gemini"
+          data-default-label="Refresh all AI"
+        >
+          Refresh all AI
+        </button>
       </div>
     </div>
     <button class="collapsible-toggle" id="recommendations-toggle">
@@ -2046,10 +2165,23 @@ const state = { sort: 'date_read', rating: 0, shelves: [], query: '' };
 let allReadBooks = [];
 let activeHoverCard = null;
 let healthPayload = null;
+let booksGeneratedAt = '';
+let llmRuntimeStatus = null;
+let tasteProfilePayload = null;
+let recommendationsPayload = null;
+let hasLoadedInitialData = false;
 const hovercardEl = document.getElementById('book-hovercard');
 const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 const localApiPort = location.port === '8010' ? '8011' : '8001';
 const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
+const LLM_TARGET_CONFIG = {
+  taste_profile: { label: 'Taste Profile', buttonLabel: 'Refresh taste profile' },
+  opus: { label: 'Claude', buttonLabel: 'Refresh Claude' },
+  gpt45: { label: 'ChatGPT', buttonLabel: 'Refresh ChatGPT' },
+  gemini: { label: 'Gemini', buttonLabel: 'Refresh Gemini' },
+};
+const LLM_TARGET_KEYS = Object.keys(LLM_TARGET_CONFIG);
+const LLM_RECOMMENDATION_TARGETS = ['opus', 'gpt45', 'gemini'];
 
 function stars(n, max = 5) {
   let s = '';
@@ -2595,53 +2727,182 @@ function renderToRead(books) {
   `).join('');
 }
 
+function parseLlmTargets(rawValue) {
+  return String(rawValue || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => LLM_TARGET_CONFIG[value]);
+}
+
+function llmStatusTargets(status) {
+  if (status && Array.isArray(status.targets) && status.targets.length) {
+    return status.targets.filter(target => LLM_TARGET_CONFIG[target]);
+  }
+  if (status && (status.status === 'running' || status.status === 'error')) {
+    return [...LLM_TARGET_KEYS];
+  }
+  return [];
+}
+
+function llmTargetHealth(target) {
+  return healthPayload && healthPayload.llm_targets ? healthPayload.llm_targets[target] || null : null;
+}
+
+function llmTargetsOverlap(left, right) {
+  return left.some(target => right.includes(target));
+}
+
+function llmTargetsEqual(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every(target => right.includes(target));
+}
+
+function llmChipDescriptor(targets, compact = false) {
+  const normalizedTargets = targets.filter(target => LLM_TARGET_CONFIG[target]);
+  const runtimeTargets = llmStatusTargets(llmRuntimeStatus);
+  const isActive = llmTargetsOverlap(normalizedTargets, runtimeTargets);
+
+  if (llmRuntimeStatus && llmRuntimeStatus.status === 'running' && isActive) {
+    return {
+      text: compact ? 'Refreshing…' : 'Refreshing AI cache…',
+      statusClass: 'is-running',
+    };
+  }
+
+  if (llmRuntimeStatus && llmRuntimeStatus.status === 'error' && isActive) {
+    return {
+      text: compact ? 'Refresh failed' : 'AI refresh failed',
+      statusClass: 'is-error',
+    };
+  }
+
+  if (!healthPayload) {
+    return {
+      text: compact ? 'Checking…' : 'Checking AI cache…',
+      statusClass: 'is-current',
+    };
+  }
+
+  const outdated = normalizedTargets.some(target => {
+    const targetState = llmTargetHealth(target);
+    return targetState ? targetState.outdated : false;
+  });
+  if (outdated) {
+    return {
+      text: compact ? 'May be outdated' : 'AI cache may be behind the shelf',
+      statusClass: 'is-stale',
+    };
+  }
+
+  return {
+    text: compact ? 'Up to date' : 'AI cache up to date',
+    statusClass: 'is-current',
+  };
+}
+
+function syncLlmAdminControls() {
+  const loggedIn = Boolean(getToken());
+
+  document.querySelectorAll('[data-llm-chip-targets]').forEach(el => {
+    if (!loggedIn) {
+      el.className = 'admin-llm-status hidden';
+      el.textContent = '';
+      return;
+    }
+
+    const descriptor = llmChipDescriptor(
+      parseLlmTargets(el.dataset.llmChipTargets),
+      el.dataset.llmChipStyle === 'compact'
+    );
+    el.textContent = descriptor.text;
+    el.className = `admin-llm-status ${descriptor.statusClass}`;
+  });
+
+  document.querySelectorAll('.admin-llm-btn').forEach(btn => {
+    const targets = parseLlmTargets(btn.dataset.llmTargets);
+    const defaultLabel = btn.dataset.defaultLabel || 'Refresh';
+    const isRunning = llmRuntimeStatus && llmRuntimeStatus.status === 'running';
+    const isActive = llmTargetsEqual(targets, llmStatusTargets(llmRuntimeStatus));
+    btn.disabled = !loggedIn || Boolean(isRunning);
+    btn.textContent = isActive && isRunning ? 'Refreshing…' : defaultLabel;
+  });
+}
+
 function renderTasteProfile(profile) {
+  tasteProfilePayload = profile && profile.summary ? profile : null;
   const section = document.getElementById('taste-profile');
-  if (!profile || !profile.summary) {
+  const emptyState = document.getElementById('taste-empty-state');
+  const hasProfile = Boolean(tasteProfilePayload);
+  const showAdmin = Boolean(getToken());
+
+  if (!hasProfile && !showAdmin) {
     section.classList.add('hidden');
     return;
   }
 
   section.classList.remove('hidden');
-  document.getElementById('taste-summary').textContent = profile.summary;
-  const preview = profile.summary.length > 220
-    ? `${profile.summary.slice(0, 220).trimEnd()}...`
-    : profile.summary;
+  syncLlmAdminControls();
+
+  if (!hasProfile) {
+    setTasteProfileExpanded(false);
+    tastePreviewShellEl.classList.add('hidden');
+    tasteContentEl.classList.add('hidden');
+    emptyState.textContent = 'Taste profile not generated yet. Refresh taste profile to populate this section.';
+    emptyState.classList.remove('hidden');
+    document.getElementById('taste-summary').textContent = '';
+    document.getElementById('taste-preview').textContent = '';
+    document.getElementById('traits-grid').innerHTML = '';
+    document.getElementById('blind-spot').innerHTML = '';
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+  tastePreviewShellEl.classList.remove('hidden');
+  tasteContentEl.classList.remove('hidden');
+  document.getElementById('taste-summary').textContent = tasteProfilePayload.summary;
+  const preview = tasteProfilePayload.summary.length > 220
+    ? `${tasteProfilePayload.summary.slice(0, 220).trimEnd()}...`
+    : tasteProfilePayload.summary;
   document.getElementById('taste-preview').textContent = preview;
-  document.getElementById('traits-grid').innerHTML = (profile.traits || []).map(trait => `
+  document.getElementById('traits-grid').innerHTML = (tasteProfilePayload.traits || []).map(trait => `
     <article class="trait-card">
       <h3 class="trait-title">${escHtml(trait.label)}</h3>
       <p class="trait-explainer">${escHtml(trait.explanation)}</p>
     </article>
   `).join('');
-  document.getElementById('blind-spot').innerHTML = `<strong>Blind spot.</strong> ${escHtml(profile.blind_spots || '')}`;
+  document.getElementById('blind-spot').innerHTML = `<strong>Blind spot.</strong> ${escHtml(tasteProfilePayload.blind_spots || '')}`;
 }
 
 function renderRecommendations(recommendations) {
+  recommendationsPayload = recommendations || null;
   const section = document.getElementById('recommendations');
   const grid = document.getElementById('recommendation-grid');
   const advisory = document.getElementById('recommendation-advisory');
   const footer = document.getElementById('recommendation-footer');
+  const showAdmin = Boolean(getToken());
 
   const providers = [
-    ['opus', 'Claude', recommendations && recommendations.opus],
-    ['gpt45', 'ChatGPT', recommendations && recommendations.gpt45],
-    ['gemini', 'Gemini', recommendations && recommendations.gemini],
+    ['opus', 'Claude', recommendationsPayload && recommendationsPayload.opus],
+    ['gpt45', 'ChatGPT', recommendationsPayload && recommendationsPayload.gpt45],
+    ['gemini', 'Gemini', recommendationsPayload && recommendationsPayload.gemini],
   ];
-  const unavailable = providers.filter(([, , entry]) => entry && entry.error);
+  const unavailable = recommendationsPayload
+    ? providers.filter(([, , entry]) => entry && entry.error)
+    : [];
 
-  if (!recommendations) {
+  if (!recommendationsPayload && !showAdmin) {
     section.classList.add('hidden');
     return;
   }
 
   section.classList.remove('hidden');
   grid.classList.remove('single');
+  syncLlmAdminControls();
 
-  if (unavailable.length === 1) {
+  if (recommendationsPayload && unavailable.length === 1) {
     advisory.classList.remove('hidden');
     advisory.textContent = `${unavailable[0][1]} was unavailable when this set was last generated.`;
-  } else if (unavailable.length > 1) {
+  } else if (recommendationsPayload && unavailable.length > 1) {
     advisory.classList.remove('hidden');
     advisory.textContent = `${unavailable.map(([, label]) => label).join(' and ')} were unavailable when this set was last generated.`;
   } else {
@@ -2666,13 +2927,39 @@ function renderRecommendations(recommendations) {
         ? ''
         : entry && entry.error
           ? 'This provider did not return recommendations in the last generation.'
-          : 'Not generated yet. Run LLM regeneration to fill this column.';
+          : showAdmin
+            ? 'Not generated yet. Refresh this model to fill the column.'
+            : 'Not generated yet.';
+    const adminControls = showAdmin
+      ? `
+        <div class="column-admin-row">
+          <span
+            class="admin-llm-status"
+            data-llm-chip-targets="${key}"
+            data-llm-chip-style="compact"
+          ></span>
+          <button
+            class="admin-btn admin-llm-btn is-compact"
+            type="button"
+            data-llm-targets="${key}"
+            data-default-label="Refresh ${label}"
+          >
+            Refresh ${label}
+          </button>
+        </div>
+      `
+      : '';
 
     return `
     <article class="recommendation-column">
       <div class="column-header">
-        <div class="column-title">${escHtml(label)}</div>
-        <span class="chip">${escHtml(modelLabel)}</span>
+        <div class="column-header-copy">
+          <div class="column-title-row">
+            <div class="column-title">${escHtml(label)}</div>
+            <span class="chip">${escHtml(modelLabel)}</span>
+          </div>
+          ${adminControls}
+        </div>
       </div>
       <p class="reasoning">${escHtml(reasoning)}</p>
       ${hasBooks ? `
@@ -2701,23 +2988,109 @@ function renderRecommendations(recommendations) {
       <div class="recommendation-empty">
         ${entry && entry.error
           ? 'Unavailable in the last cached generation.'
-          : 'Not generated yet.'}
+          : showAdmin
+            ? `Not generated yet. Refresh ${label} to populate this column.`
+            : 'Not generated yet.'}
       </div>
       `}
     </article>
   `;
   }).join('');
+  syncLlmAdminControls();
 
   const generatedAt = healthPayload && (healthPayload.llm_generated_at || healthPayload.generated_at);
   footer.textContent = generatedAt
-    ? `Generated on ${formatLongDate(generatedAt)}. Recommendations update whenever new books change the shelf hash.`
-    : 'Recommendations update whenever new books change the shelf hash.';
+    ? `Generated on ${formatLongDate(generatedAt)}.`
+    : '';
 }
 
 async function fetchJson(url) {
   const response = await fetch(`${apiBase}${url}`);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
+}
+
+async function refreshHealthPayload() {
+  const payload = await fetchJson('/api/health');
+  healthPayload = payload;
+  renderStagingBanner(healthPayload);
+  syncLlmAdminControls();
+  updateFooter(booksGeneratedAt);
+  return payload;
+}
+
+async function refreshLlmSections() {
+  const [tasteResult, recommendationsResult] = await Promise.allSettled([
+    fetchJson('/api/taste-profile'),
+    fetchJson('/api/recommendations'),
+  ]);
+
+  renderTasteProfile(tasteResult.status === 'fulfilled' ? tasteResult.value : null);
+  renderRecommendations(recommendationsResult.status === 'fulfilled' ? recommendationsResult.value : null);
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForLlmRefresh() {
+  const deadline = Date.now() + 10 * 60 * 1000;
+
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    const status = await fetchJson('/api/llm-status');
+    llmRuntimeStatus = status;
+    syncLlmAdminControls();
+    if (status.status !== 'running') return status;
+  }
+
+  return null;
+}
+
+async function triggerLlmRefresh(targets) {
+  const token = getToken();
+  if (!token) {
+    alert('Not logged in.');
+    return;
+  }
+
+  const normalizedTargets = Array.from(new Set(targets.filter(target => LLM_TARGET_CONFIG[target])));
+  if (!normalizedTargets.length) return;
+
+  try {
+    llmRuntimeStatus = { status: 'running', targets: normalizedTargets };
+    syncLlmAdminControls();
+
+    const resp = await fetch(`${apiBase}/api/llm/regenerate`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: false, targets: normalizedTargets }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Failed');
+
+    const finalStatus = await waitForLlmRefresh();
+    if (!finalStatus) {
+      throw new Error('Timed out waiting for refresh.');
+    }
+
+    await refreshHealthPayload();
+    await refreshLlmSections();
+    if (finalStatus.status === 'error') {
+      throw new Error(finalStatus.error || 'Refresh failed');
+    }
+
+    llmRuntimeStatus = null;
+    syncLlmAdminControls();
+  } catch (err) {
+    llmRuntimeStatus = {
+      status: 'error',
+      error: err && err.message ? err.message : 'Refresh failed',
+      targets: normalizedTargets,
+    };
+    syncLlmAdminControls();
+    alert('Regeneration failed: ' + (err && err.message ? err.message : 'Unknown error'));
+  }
 }
 
 async function load() {
@@ -2740,10 +3113,12 @@ async function load() {
   if (healthResult.status === 'fulfilled') {
     healthPayload = healthResult.value;
     renderStagingBanner(healthPayload);
+    syncLlmAdminControls();
   }
 
   const data = booksResult.value;
   const { books, stats, generated_at } = data;
+  booksGeneratedAt = generated_at || '';
 
   allReadBooks = books.read || [];
   renderActivityPreview(activityResult.status === 'fulfilled' ? activityResult.value : { items: [] });
@@ -2753,16 +3128,12 @@ async function load() {
   renderReadingWeeks(allReadBooks);
   renderCurrentlyReading(books.currently_reading || []);
   renderToRead(books.to_read || []);
+  hasLoadedInitialData = true;
+  renderTasteProfile(tasteResult.status === 'fulfilled' ? tasteResult.value : null);
+  renderRecommendations(recommendationsResult.status === 'fulfilled' ? recommendationsResult.value : null);
+  syncLlmAdminControls();
 
-  if (tasteResult.status === 'fulfilled') {
-    renderTasteProfile(tasteResult.value);
-  }
-
-  if (recommendationsResult.status === 'fulfilled') {
-    renderRecommendations(recommendationsResult.value);
-  }
-
-  updateFooter(generated_at);
+  updateFooter(booksGeneratedAt);
 }
 
 document.getElementById('sort-pills').addEventListener('click', e => {
@@ -2933,6 +3304,12 @@ function setAuthState(loggedIn) {
   document.getElementById('auth-status').textContent = loggedIn ? 'Logged in' : 'Admin';
   const adminActions = document.getElementById('admin-actions');
   if (adminActions) adminActions.classList.toggle('hidden', !loggedIn);
+  if (!loggedIn) llmRuntimeStatus = null;
+  syncLlmAdminControls();
+  if (hasLoadedInitialData) {
+    renderTasteProfile(tasteProfilePayload);
+    renderRecommendations(recommendationsPayload);
+  }
 }
 
 document.getElementById('auth-login-btn').addEventListener('click', () => {
@@ -2964,27 +3341,11 @@ function renderStagingBanner(health) {
 }
 
 // ── Regenerate ──
-document.getElementById('regenerate-btn').addEventListener('click', async () => {
-  const token = getToken();
-  if (!token) return alert('Not logged in.');
-  const btn = document.getElementById('regenerate-btn');
-  btn.textContent = 'Regenerating…';
-  btn.disabled = true;
-  try {
-    const resp = await fetch(`${apiBase}/api/llm/regenerate`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ force: false }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || 'Failed');
-    btn.textContent = 'Started!';
-    setTimeout(() => { btn.textContent = 'Regenerate LLM'; btn.disabled = false; }, 3000);
-  } catch (err) {
-    alert('Regeneration failed: ' + err.message);
-    btn.textContent = 'Regenerate LLM';
-    btn.disabled = false;
-  }
+document.addEventListener('click', event => {
+  const button = event.target.closest('.admin-llm-btn');
+  if (!button) return;
+  event.preventDefault();
+  triggerLlmRefresh(parseLlmTargets(button.dataset.llmTargets));
 });
 
 // ── Reading Life in Weeks ──

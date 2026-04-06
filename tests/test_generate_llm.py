@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.modules.setdefault("httpx", SimpleNamespace(AsyncClient=object, Timeout=object))
 
-from bookshelf_data import compute_books_hash, default_llm_cache, load_json  # noqa: E402
+from bookshelf_data import compute_books_hash, compute_llm_input_hash, default_llm_cache, load_json  # noqa: E402
 from scripts import generate_llm  # noqa: E402
 
 
@@ -61,23 +61,65 @@ class GenerateLlmTests(unittest.TestCase):
 
         self.assertNotEqual(original_hash, compute_books_hash(books_payload))
 
+    def test_llm_input_hash_ignores_non_read_shelf_changes(self):
+        books_payload = sample_books_payload()
+        original_hash = compute_llm_input_hash(books_payload)
+
+        books_payload["books"]["currently_reading"].append(
+            {"title": "Fresh Start", "author": "New Author"}
+        )
+        books_payload["books"]["to_read"].append(
+            {"title": "Future Two", "author": "Future Author Two"}
+        )
+
+        self.assertEqual(original_hash, compute_llm_input_hash(books_payload))
+
+    def test_llm_input_hash_changes_when_review_changes(self):
+        books_payload = sample_books_payload()
+        original_hash = compute_llm_input_hash(books_payload)
+
+        books_payload["books"]["read"][0]["my_review"] = "This landed differently."
+
+        self.assertNotEqual(original_hash, compute_llm_input_hash(books_payload))
+
+    def test_llm_input_hash_ignores_notes(self):
+        books_payload = sample_books_payload()
+        original_hash = compute_llm_input_hash(books_payload)
+
+        books_payload["books"]["read"][0]["notes"] = "A private note should not affect freshness."
+
+        self.assertEqual(original_hash, compute_llm_input_hash(books_payload))
+
     def test_skip_generation_when_hash_matches(self):
         books_payload = sample_books_payload()
-        books_hash = compute_books_hash(books_payload)
+        books_hash = compute_llm_input_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
+        cache_payload["llm_input_hash"] = books_hash
         cache_payload["prompt_hash"] = generate_llm.compute_prompt_hash()
+        cache_payload["taste_profile"] = {
+            "summary": "Summary",
+            "traits": [{"label": "Trait", "explanation": "Explanation"}],
+            "blind_spots": "Blind spots",
+        }
+        cache_payload["recommendations"]["opus"]["books"] = [{"title": "Rec A", "author": "Author A", "reason": "Specific.", "confidence": "high"}]
+        cache_payload["recommendations"]["opus"]["reasoning"] = "Strategy"
         cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
+        cache_payload["recommendations"]["gpt45"]["books"] = [{"title": "Rec B", "author": "Author B", "reason": "Specific.", "confidence": "medium"}]
+        cache_payload["recommendations"]["gpt45"]["reasoning"] = "Strategy"
         cache_payload["recommendations"]["gpt45"]["model"] = generate_llm.OPENAI_MODEL
+        cache_payload["recommendations"]["gemini"]["books"] = [{"title": "Rec C", "author": "Author C", "reason": "Specific.", "confidence": "medium"}]
+        cache_payload["recommendations"]["gemini"]["reasoning"] = "Strategy"
         cache_payload["recommendations"]["gemini"]["model"] = generate_llm.GEMINI_MODEL
         self.assertTrue(generate_llm.skip_generation(cache_payload, books_hash, force=False))
         self.assertFalse(generate_llm.skip_generation(cache_payload, books_hash, force=True))
 
     def test_skip_generation_rebuilds_when_runtime_config_changes(self):
         books_payload = sample_books_payload()
-        books_hash = compute_books_hash(books_payload)
+        books_hash = compute_llm_input_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
+        cache_payload["llm_input_hash"] = books_hash
         cache_payload["prompt_hash"] = generate_llm.compute_prompt_hash()
         cache_payload["recommendations"]["opus"]["model"] = "old-anthropic-model"
         cache_payload["recommendations"]["gpt45"]["model"] = "old-openai-model"
@@ -87,9 +129,10 @@ class GenerateLlmTests(unittest.TestCase):
 
     def test_skip_generation_rebuilds_when_prompt_changes(self):
         books_payload = sample_books_payload()
-        books_hash = compute_books_hash(books_payload)
+        books_hash = compute_llm_input_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
+        cache_payload["llm_input_hash"] = books_hash
         cache_payload["prompt_hash"] = "old-prompt-hash"
         cache_payload["recommendations"]["opus"]["model"] = generate_llm.ANTHROPIC_MODEL
         cache_payload["recommendations"]["gpt45"]["model"] = generate_llm.OPENAI_MODEL
@@ -99,9 +142,10 @@ class GenerateLlmTests(unittest.TestCase):
 
     def test_skip_generation_partial_provider_rebuilds_after_provider_error(self):
         books_payload = sample_books_payload()
-        books_hash = compute_books_hash(books_payload)
+        books_hash = compute_llm_input_hash(books_payload)
         cache_payload = default_llm_cache()
         cache_payload["books_hash"] = books_hash
+        cache_payload["llm_input_hash"] = books_hash
         cache_payload["prompt_hash"] = generate_llm.compute_prompt_hash()
         cache_payload["recommendations"]["gemini"] = {
             "model": generate_llm.GEMINI_MODEL,
@@ -175,6 +219,11 @@ class GenerateLlmTests(unittest.TestCase):
         self.assertIn("error", payload["recommendations"]["opus"])
         self.assertEqual(payload["taste_profile"]["summary"], "Sharp.")
         self.assertFalse(payload["dry_run"])
+        llm_input_hash = compute_llm_input_hash(books_payload)
+        self.assertEqual(payload["target_input_hashes"]["taste_profile"], llm_input_hash)
+        self.assertEqual(payload["target_input_hashes"]["gpt45"], llm_input_hash)
+        self.assertEqual(payload["target_input_hashes"]["gemini"], llm_input_hash)
+        self.assertEqual(payload["target_input_hashes"]["opus"], "")
 
     def test_call_gemini_json_uses_structured_output_schema(self):
         captured = {}
@@ -240,9 +289,16 @@ class GenerateLlmTests(unittest.TestCase):
             generate_llm.GEMINI_RECOMMENDATIONS_JSON_SCHEMA,
         )
 
-    def test_provider_error_records_debug_info(self):
+    def test_provider_error_records_debug_info_without_overwriting_cached_content(self):
         books_payload = sample_books_payload()
         cache_payload = default_llm_cache()
+        cache_payload["recommendations"]["gemini"] = {
+            "model": "existing-gemini",
+            "books": [{"title": "Cached Rec", "author": "Author", "reason": "Keep this.", "confidence": "medium"}],
+            "reasoning": "Cached reasoning",
+        }
+        cache_payload["target_input_hashes"]["gemini"] = "stale-hash"
+        cache_payload["target_generated_at"]["gemini"] = "2026-03-20T09:00:00Z"
 
         class FakeAsyncClient:
             def __init__(self, *args, **kwargs):
@@ -285,7 +341,7 @@ class GenerateLlmTests(unittest.TestCase):
             )
 
         self.assertFalse(skipped)
-        self.assertIn("error", payload["recommendations"]["gemini"])
+        self.assertEqual(payload["recommendations"]["gemini"]["model"], "existing-gemini")
         self.assertEqual(
             payload["debug"]["recommendations"]["gemini"]["raw_text_excerpt"],
             '{"reasoning": "cut off',
@@ -298,10 +354,14 @@ class GenerateLlmTests(unittest.TestCase):
             payload["debug"]["recommendations"]["gemini"]["usage_metadata"]["promptTokenCount"],
             123638,
         )
+        self.assertEqual(payload["target_input_hashes"]["gemini"], "stale-hash")
+        self.assertEqual(payload["target_generated_at"]["gemini"], "2026-03-20T09:00:00Z")
 
     def test_partial_provider_refresh_preserves_other_cached_results(self):
         books_payload = sample_books_payload()
         cache_payload = default_llm_cache()
+        stale_hash = "stale-hash"
+        stale_generated_at = "2026-03-20T10:00:00Z"
         cache_payload["taste_profile"] = {
             "summary": "Keep me",
             "traits": [{"label": "Trait", "explanation": "Explained."}],
@@ -316,6 +376,18 @@ class GenerateLlmTests(unittest.TestCase):
             "model": "existing-gpt",
             "books": [{"title": "GPT Rec", "author": "Author", "reason": "Reason", "confidence": "medium"}],
             "reasoning": "GPT reasoning",
+        }
+        cache_payload["target_input_hashes"] = {
+            "taste_profile": stale_hash,
+            "opus": stale_hash,
+            "gpt45": stale_hash,
+            "gemini": stale_hash,
+        }
+        cache_payload["target_generated_at"] = {
+            "taste_profile": stale_generated_at,
+            "opus": stale_generated_at,
+            "gpt45": stale_generated_at,
+            "gemini": stale_generated_at,
         }
 
         class FakeAsyncClient:
@@ -369,6 +441,78 @@ class GenerateLlmTests(unittest.TestCase):
         self.assertEqual(payload["recommendations"]["opus"]["model"], "existing-claude")
         self.assertEqual(payload["recommendations"]["gpt45"]["model"], "existing-gpt")
         self.assertEqual(payload["recommendations"]["gemini"]["model"], "gemini-test")
+        llm_input_hash = compute_llm_input_hash(books_payload)
+        self.assertEqual(payload["target_input_hashes"]["taste_profile"], stale_hash)
+        self.assertEqual(payload["target_input_hashes"]["opus"], stale_hash)
+        self.assertEqual(payload["target_input_hashes"]["gpt45"], stale_hash)
+        self.assertEqual(payload["target_input_hashes"]["gemini"], llm_input_hash)
+        self.assertEqual(payload["target_generated_at"]["taste_profile"], stale_generated_at)
+        self.assertEqual(payload["target_generated_at"]["opus"], stale_generated_at)
+        self.assertEqual(payload["target_generated_at"]["gpt45"], stale_generated_at)
+        self.assertEqual(payload["target_generated_at"]["gemini"], payload["generated_at"])
+
+    def test_taste_profile_only_refresh_calls_only_taste_profile(self):
+        books_payload = sample_books_payload()
+        cache_payload = default_llm_cache()
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        taste_mock = AsyncMock(
+            return_value={
+                "summary": "Sharp.",
+                "traits": [{"label": "Trait", "explanation": "Explained."}],
+                "blind_spots": "More poetry.",
+            }
+        )
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=False),
+            patch.object(generate_llm.httpx, "Timeout", return_value=None),
+            patch.object(generate_llm.httpx, "AsyncClient", FakeAsyncClient),
+            patch.object(generate_llm, "generate_taste_profile", taste_mock),
+            patch.object(
+                generate_llm,
+                "generate_anthropic_recommendations",
+                AsyncMock(side_effect=AssertionError("should not refresh claude recommendations")),
+            ),
+            patch.object(
+                generate_llm,
+                "generate_openai_recommendations",
+                AsyncMock(side_effect=AssertionError("should not refresh openai recommendations")),
+            ),
+            patch.object(
+                generate_llm,
+                "generate_gemini_recommendations",
+                AsyncMock(side_effect=AssertionError("should not refresh gemini recommendations")),
+            ),
+        ):
+            payload, skipped = asyncio.run(
+                generate_llm.generate_cache_payload(
+                    books_payload,
+                    cache_payload,
+                    force=False,
+                    selected_providers=set(),
+                    refresh_taste_profile=True,
+                )
+            )
+
+        self.assertFalse(skipped)
+        taste_mock.assert_awaited_once()
+        self.assertEqual(payload["taste_profile"]["summary"], "Sharp.")
+        self.assertTrue(payload["partial_refresh"])
+        llm_input_hash = compute_llm_input_hash(books_payload)
+        self.assertEqual(payload["target_input_hashes"]["taste_profile"], llm_input_hash)
+        self.assertEqual(payload["target_input_hashes"]["opus"], "")
+        self.assertEqual(payload["target_input_hashes"]["gpt45"], "")
+        self.assertEqual(payload["target_input_hashes"]["gemini"], "")
 
     def test_gemini_provider_uses_shared_snapshot(self):
         books_payload = sample_books_payload()
