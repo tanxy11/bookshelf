@@ -242,9 +242,6 @@ def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
             "shelves": book.get("shelves", []),
             "date_read": book.get("date_read"),
         }
-        notes = book.get("notes")
-        if notes:
-            entry["notes"] = notes
         return entry
 
     return {

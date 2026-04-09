@@ -321,7 +321,6 @@ async def create_book(request: Request) -> dict:
         "shelves": shelves or [_normalize_shelf_tag(shelf)],
         "exclusive_shelf": shelf,
         "review": body.get("my_review") or body.get("review") or None,
-        "notes": body.get("notes") or None,
         "cover_url": body.get("cover_url") or None,
         "google_books_id": body.get("google_books_id") or None,
         "goodreads_id": body.get("goodreads_id") or None,

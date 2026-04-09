@@ -178,11 +178,6 @@
       <textarea id="my_review" name="my_review" placeholder="Your review…"></textarea>
     </div>
 
-    <div class="form-group">
-      <label for="notes">Notes</label>
-      <textarea id="notes" name="notes" placeholder="Personal notes…"></textarea>
-    </div>
-
     <input type="hidden" id="google_books_id" name="google_books_id">
 
     <div id="message" class="message hidden"></div>
@@ -313,7 +308,6 @@ function populateForm(book) {
   document.getElementById('date_added').value = book.date_added || '';
   document.getElementById('cover_url').value = book.cover_url || '';
   document.getElementById('my_review').value = book.my_review || '';
-  document.getElementById('notes').value = book.notes || '';
   document.getElementById('google_books_id').value = book.google_books_id || '';
   setSelectedTags(book.shelves || []);
 }
@@ -373,7 +367,6 @@ document.getElementById('edit-form').addEventListener('submit', async e => {
   const date_added = document.getElementById('date_added').value;
   const cover_url = document.getElementById('cover_url').value.trim();
   const my_review = document.getElementById('my_review').value.trim();
-  const notes = document.getElementById('notes').value.trim();
   const google_books_id = document.getElementById('google_books_id').value.trim();
 
   if (isbn13) body.isbn13 = isbn13;
@@ -382,7 +375,6 @@ document.getElementById('edit-form').addEventListener('submit', async e => {
   if (date_added) body.date_added = date_added;
   if (cover_url) body.cover_url = cover_url;
   if (my_review) body.my_review = my_review;
-  if (notes) body.notes = notes;
   if (google_books_id) body.google_books_id = google_books_id;
 
   try {
