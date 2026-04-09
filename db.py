@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS books (
     exclusive_shelf TEXT NOT NULL DEFAULT 'to_read'
         CHECK (exclusive_shelf IN ('read', 'currently_reading', 'to_read')),
     review TEXT,
-    notes TEXT,
     cover_url TEXT,
     google_books_id TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -190,6 +189,15 @@ def _migration_v6(conn: sqlite3.Connection) -> None:
 
 # ── Migration registry ────────────────────────────────────────────────────────
 
+def _migration_v7(conn: sqlite3.Connection) -> None:
+    book_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(books)").fetchall()
+    }
+    if "notes" in book_columns:
+        conn.execute("ALTER TABLE books DROP COLUMN notes")
+
+
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _migration_v1),
     (2, _migration_v2),
@@ -197,6 +205,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (4, _migration_v4),
     (5, _migration_v5),
     (6, _migration_v6),
+    (7, _migration_v7),
 ]
 
 
@@ -284,8 +293,8 @@ def insert_book(conn: sqlite3.Connection, book: dict[str, Any]) -> int:
         """INSERT INTO books
            (goodreads_id, title, author, isbn13, my_rating, avg_rating,
             pages, date_read, date_added, shelves, exclusive_shelf,
-            review, notes, cover_url, google_books_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            review, cover_url, google_books_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             book.get("goodreads_id") or None,
             book["title"],
@@ -299,7 +308,6 @@ def insert_book(conn: sqlite3.Connection, book: dict[str, Any]) -> int:
             shelves,
             book.get("exclusive_shelf", "to_read"),
             book.get("review") or book.get("my_review") or None,
-            book.get("notes") or None,
             book.get("cover_url") or None,
             book.get("google_books_id") or None,
         ),
@@ -345,7 +353,7 @@ def update_book(conn: sqlite3.Connection, book_id: int, fields: dict[str, Any]) 
     allowed = {
         "title", "author", "isbn13", "my_rating", "avg_rating", "pages",
         "date_read", "date_added", "shelves", "exclusive_shelf", "review",
-        "notes", "cover_url", "google_books_id", "goodreads_id",
+        "cover_url", "google_books_id", "goodreads_id",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:

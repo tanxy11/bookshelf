@@ -266,17 +266,17 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_6(self):
+    def test_schema_version_is_7(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 6)
+        self.assertEqual(get_schema_version(conn), 7)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 6)
+        self.assertEqual(get_schema_version(conn), 7)
         conn.close()
 
     def test_existing_notes_table_upgrades_cleanly(self):
@@ -329,8 +329,8 @@ class DbSchemaTests(unittest.TestCase):
             for row in conn.execute("PRAGMA table_info(book_suggestions)").fetchall()
         }
 
-        self.assertEqual(applied, 5)
-        self.assertEqual(get_schema_version(conn), 6)
+        self.assertEqual(applied, 6)
+        self.assertEqual(get_schema_version(conn), 7)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
         self.assertIn("book_suggestions", tables)
@@ -534,9 +534,9 @@ class BookshelfDBTests(unittest.TestCase):
         # Should have my_review not review
         self.assertIn("my_review", book)
         self.assertNotIn("review", book)
-        # id, notes, cover_url, google_books_id are kept for CRUD/frontend
+        # id, cover_url, google_books_id are kept for CRUD/frontend
         self.assertIn("id", book)
-        self.assertIn("notes", book)
+        self.assertNotIn("notes", book)
         # DB-only timestamps are removed
         self.assertNotIn("created_at", book)
         self.assertNotIn("updated_at", book)

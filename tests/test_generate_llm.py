@@ -646,32 +646,6 @@ class GenerateLlmTests(unittest.TestCase):
             self.assertEqual(saved["recommendations"]["gemini"]["model"], "gemini-test")
 
 
-    def test_build_library_snapshot_includes_notes(self):
-        books_payload = sample_books_payload()
-        books_payload["books"]["read"][0]["notes"] = "Changed how I think about ecology."
-        snapshot = generate_llm.build_library_snapshot(books_payload)
-        self.assertEqual(snapshot["read"][0]["notes"], "Changed how I think about ecology.")
-        # Book without notes should not have the key
-        self.assertNotIn("notes", snapshot["read"][1])
-
-    def test_build_library_snapshot_excludes_empty_notes(self):
-        books_payload = sample_books_payload()
-        books_payload["books"]["read"][0]["notes"] = ""
-        snapshot = generate_llm.build_library_snapshot(books_payload)
-        self.assertNotIn("notes", snapshot["read"][0])
-
-    def test_taste_profile_prompt_mentions_notes(self):
-        snapshot = generate_llm.build_library_snapshot(sample_books_payload())
-        prompt = generate_llm.build_taste_profile_prompt(snapshot)
-        self.assertIn("notes", prompt)
-        self.assertIn("highest-signal", prompt)
-
-    def test_recommendations_prompt_mentions_notes(self):
-        snapshot = generate_llm.build_library_snapshot(sample_books_payload())
-        prompt = generate_llm.build_recommendations_prompt(snapshot)
-        self.assertIn("notes", prompt)
-        self.assertIn("type of thinking", prompt)
-
     def test_main_sqlite_mode(self):
         """Test that --db flag routes to SQLite generation."""
         books_payload = sample_books_payload()
