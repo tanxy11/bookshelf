@@ -7,6 +7,7 @@
   <meta property="og:title" content="">
   <meta property="og:description" content="">
   <meta property="og:image" content="">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
@@ -105,11 +106,36 @@
       margin-bottom: 14px; color: rgba(52, 41, 34, 0.94);
     }
     .review-text {
-      white-space: pre-wrap;
-      line-height: 1.78;
+      line-height: 1.5;
       font-size: 1.03rem;
       color: rgba(52, 41, 34, 0.96);
     }
+    .review-text p { margin: 0 0 0.3em 0; }
+    .review-text p:last-child { margin-bottom: 0; }
+    .review-text blockquote {
+      border-left: 3px solid rgba(122, 92, 62, 0.3);
+      margin: 0.35em 0; padding: 0.1em 0.7em;
+      color: rgba(52, 41, 34, 0.75);
+    }
+    .review-text ul, .review-text ol { margin: 0.15em 0; padding-left: 1.3em; }
+    .review-text li { margin-bottom: 0; }
+    .review-text code {
+      background: rgba(122, 92, 62, 0.08); padding: 0.15em 0.35em;
+      border-radius: 3px; font-size: 0.93em;
+    }
+    .review-text pre { background: rgba(122, 92, 62, 0.06); padding: 0.6em; border-radius: 6px; overflow-x: auto; margin: 0.3em 0; }
+    .review-text pre code { background: none; padding: 0; }
+    .review-text a { color: rgba(122, 92, 62, 0.85); text-decoration: underline; }
+    .review-text h1, .review-text h2, .review-text h3 {
+      font-family: 'Cormorant Garamond', serif; font-weight: 600;
+      color: rgba(52, 41, 34, 0.94); margin: 0.5em 0 0.15em;
+    }
+    .review-text h1 { font-size: 1.2rem; }
+    .review-text h2 { font-size: 1.12rem; }
+    .review-text h3 { font-size: 1.05rem; }
+    .review-text hr { border: none; border-top: 1px solid rgba(122, 92, 62, 0.18); margin: 0.7em 0; }
+    .review-text strong { font-weight: 600; }
+    .review-text em { font-style: italic; }
 
     /* Notes */
     .notes-empty { color: var(--muted); font-size: .97rem; }
@@ -411,7 +437,12 @@ function renderHero(book) {
 function renderReview(book) {
   const review = (book.my_review || '').trim();
   if (!review) return;
-  document.getElementById('review-text').textContent = review;
+  if (typeof marked !== 'undefined') {
+    marked.use({ breaks: true });
+    document.getElementById('review-text').innerHTML = marked.parse(review);
+  } else {
+    document.getElementById('review-text').textContent = review;
+  }
   document.getElementById('review-section').style.display = '';
 }
 
