@@ -1,12 +1,21 @@
+# Auto-load .env if present so VPS_HOST / VPS_PATH (and any other variables
+# the local developer keeps there) are visible to recipes without needing a
+# separate `export` step. .env is gitignored. The leading `-` makes the
+# include silent if the file is missing.
+#
+# Caveat: Make parses .env as Makefile syntax, not shell syntax. KEY=value
+# lines work, but quoted values, spaces, or `$`-expansion will misbehave.
+# Keep .env values plain.
+-include .env
+
 PYTHON    ?= python3
 VENV_DIR  ?= .venv
 VENV_PY   := $(VENV_DIR)/bin/python
 RUN_PYTHON := $(if $(wildcard $(VENV_PY)),$(VENV_PY),$(PYTHON))
 
-# VPS settings — set VPS_HOST in your shell (`export VPS_HOST=user@host`) or
-# pass it on the command line (`make deploy VPS_HOST=user@host`). There is
-# intentionally NO default so the production host never lands in git. See
-# .env.example for the variables you should keep in your local environment.
+# VPS settings — populated from .env above when present, or pass them inline
+# (`make deploy VPS_HOST=user@host`). There is intentionally NO default for
+# VPS_HOST so the production host never lands in git. See .env.example.
 VPS_HOST  ?=
 VPS_PATH  ?= /var/www/book.tanxy.net
 VPS_SERVICE ?= bookshelf-api
