@@ -18,7 +18,7 @@ FORCE_LLM ?= 0
 .PHONY: install parse llm llm-force llm-staging llm-staging-force build refresh-data dev \
         deploy deploy-sync restart-api backup pull-db push-db \
         deploy-staging deploy-staging-sync restart-staging-api seed-staging \
-        add-notes-table
+        add-notes-table add-capture-table
 
 install:
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -142,3 +142,6 @@ seed-staging:
 
 add-notes-table:
 	$(RUN_PYTHON) scripts/add_notes_table.py
+
+add-capture-table:
+	$(RUN_PYTHON) scripts/add_capture_table.py
