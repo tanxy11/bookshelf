@@ -65,6 +65,10 @@ def _serialize_row(
     return payload
 
 
+def _is_public_row(row: dict[str, Any]) -> bool:
+    return row.get("event_type") != "note_added" or bool(row.get("note_exists"))
+
+
 def _list_all_activity_rows(conn) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     offset = 0
@@ -157,15 +161,15 @@ async def get_activity(
 
     conn = store.conn()
     requested_view = (view or "").strip().lower()
+    rows = [row for row in _list_all_activity_rows(conn) if _is_public_row(row)]
 
     if requested_view == "preview":
-        items = _serialize_preview_rows(_list_all_activity_rows(conn))
-        has_more = len(items) > offset + limit
-        visible_items = items[offset:offset + limit]
+        serialized_items = _serialize_preview_rows(rows)
     else:
-        rows = list_activity_rows(conn, limit=limit + 1, offset=offset)
-        has_more = len(rows) > limit
-        visible_items = [_serialize_row(row) for row in rows[:limit]]
+        serialized_items = [_serialize_row(row) for row in rows]
+
+    has_more = len(serialized_items) > offset + limit
+    visible_items = serialized_items[offset:offset + limit]
 
     return {
         "items": visible_items,
