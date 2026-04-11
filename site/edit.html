@@ -236,6 +236,10 @@
       padding: 24px;
     }
 
+    .meta-panel {
+      padding: 18px;
+    }
+
     .section-heading {
       display: grid;
       gap: 6px;
@@ -256,6 +260,27 @@
     .panel-copy {
       color: var(--muted);
       font-size: 1rem;
+    }
+
+    .meta-panel .section-heading {
+      gap: 4px;
+      margin-bottom: 14px;
+    }
+
+    .meta-panel .section-heading h2,
+    .meta-panel .details-summary-title {
+      font-size: clamp(1.65rem, 2.4vw, 2rem);
+      line-height: 1.02;
+    }
+
+    .meta-panel .section-heading p,
+    .meta-panel .details-summary-copy,
+    .meta-panel .panel-copy,
+    .meta-panel .field-help,
+    .meta-panel .tag-help,
+    .meta-panel .tag-placeholder,
+    .meta-panel .tag-empty {
+      font-size: 0.92rem;
     }
 
     .review-panel {
@@ -351,6 +376,14 @@
     .field-grid.two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .field-grid.three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
+    .meta-panel .field-grid {
+      gap: 12px;
+    }
+
+    .meta-panel .field-grid-spaced {
+      margin-top: 12px;
+    }
+
     .field-card {
       display: grid;
       gap: 8px;
@@ -359,6 +392,12 @@
       border: 1px solid var(--border);
       background: rgba(255,255,255,0.74);
       transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    .meta-panel .field-card {
+      gap: 6px;
+      padding: 12px 12px 10px;
+      border-radius: 15px;
     }
 
     .field-card.priority {
@@ -392,6 +431,14 @@
       transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
     }
 
+    .meta-panel input,
+    .meta-panel select,
+    .meta-panel textarea {
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 0.97rem;
+    }
+
     input:focus,
     textarea:focus,
     select:focus {
@@ -410,10 +457,22 @@
       font-size: 0.98rem;
     }
 
+    .meta-panel .priority-note {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: 0.92rem;
+    }
+
     .tag-shell {
       margin-top: 16px;
       display: grid;
       gap: 14px;
+    }
+
+    .meta-panel .tag-shell {
+      margin-top: 12px;
+      gap: 10px;
     }
 
     .tag-toolbar {
@@ -423,11 +482,20 @@
       gap: 12px;
     }
 
+    .meta-panel .tag-toolbar {
+      gap: 10px;
+    }
+
     .tag-selected,
     .tag-suggestions {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
+    }
+
+    .meta-panel .tag-selected,
+    .meta-panel .tag-suggestions {
+      gap: 8px;
     }
 
     .tag-placeholder,
@@ -450,6 +518,13 @@
       line-height: 1;
       color: var(--text);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+    }
+
+    .meta-panel .tag-chip,
+    .meta-panel .tag-suggestion {
+      gap: 6px;
+      padding: 7px 11px;
+      font-size: 0.9rem;
     }
 
     .tag-chip button,
@@ -489,12 +564,22 @@
       background: rgba(248, 242, 234, 0.8);
     }
 
+    .meta-panel .tag-manager {
+      gap: 10px;
+      padding: 12px;
+      border-radius: 16px;
+    }
+
     .tag-input-row {
       display: flex;
       gap: 10px;
     }
 
     .tag-input-row input { flex: 1; }
+
+    .meta-panel .tag-input-row {
+      gap: 8px;
+    }
 
     .btn,
     .ghost-btn,
@@ -554,6 +639,11 @@
       font-size: 0.92rem;
     }
 
+    .meta-panel .ghost-btn.small {
+      padding: 7px 12px;
+      font-size: 0.88rem;
+    }
+
     .text-btn {
       border: none;
       background: transparent;
@@ -604,6 +694,20 @@
       margin-top: 18px;
     }
 
+    .meta-panel .details-grid {
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .meta-panel summary {
+      gap: 12px;
+    }
+
+    .meta-panel .details-summary-toggle {
+      padding: 7px 12px;
+      font-size: 0.9rem;
+    }
+
     .message {
       border-radius: 18px;
       padding: 14px 16px;
@@ -624,16 +728,38 @@
     }
 
     .danger-panel {
+      padding: 16px 18px;
       background:
         linear-gradient(180deg, rgba(255, 251, 249, 0.95), rgba(251, 240, 239, 0.92)),
         var(--surface);
+    }
+
+    .danger-panel .section-heading {
+      gap: 3px;
+      margin-bottom: 10px;
+    }
+
+    .danger-panel .section-heading h2 {
+      font-size: clamp(1.4rem, 2vw, 1.7rem);
+      line-height: 1.03;
+    }
+
+    .danger-panel .section-heading p,
+    .danger-panel .panel-copy {
+      font-size: 0.9rem;
     }
 
     .danger-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 12px;
+    }
+
+    .danger-panel .btn-danger {
+      padding: 10px 18px;
+      font-size: 0.95rem;
+      flex-shrink: 0;
     }
 
     .sticky-bar {
@@ -817,7 +943,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel meta-panel">
         <div class="section-heading">
           <p class="eyebrow">Organization</p>
           <h2>Keep the record accurate while you write.</h2>
@@ -835,7 +961,7 @@
           </label>
         </div>
 
-        <div class="field-grid three-col" style="margin-top:16px">
+        <div class="field-grid three-col field-grid-spaced">
           <label class="field-card">
             <span class="field-label">Shelf</span>
             <select id="exclusive_shelf" name="exclusive_shelf">
@@ -899,7 +1025,7 @@
         </div>
       </section>
 
-      <details class="panel" id="details-panel">
+      <details class="panel meta-panel" id="details-panel">
         <summary>
           <div>
             <div class="details-summary-title">Details</div>
@@ -933,15 +1059,15 @@
         </div>
       </details>
 
-      <section class="panel danger-panel">
+      <section class="panel meta-panel danger-panel">
         <div class="section-heading">
           <p class="eyebrow">Danger zone</p>
-          <h2>Delete this book from the shelf.</h2>
-          <p>This removes the book record. Notes stay managed on the book page, but the book itself will no longer appear publicly.</p>
+          <h2>Delete this book.</h2>
+          <p>Remove the book record from the shelf. This action cannot be undone.</p>
         </div>
 
         <div class="danger-row">
-          <p class="panel-copy" id="danger-copy">Delete this entry only if you really want it gone from the bookshelf.</p>
+          <p class="panel-copy" id="danger-copy">Delete this entry only if you want it gone permanently.</p>
           <button type="button" class="btn btn-danger" id="delete-btn">Delete book</button>
         </div>
       </section>
@@ -1450,7 +1576,7 @@
       const bookPageHref = `book.html?id=${bookId}`;
       document.getElementById('book-page-link').href = bookPageHref;
       document.getElementById('sticky-book-link').href = bookPageHref;
-      document.getElementById('danger-copy').textContent = `Delete “${book.title || 'this book'}” only if you want to remove it from the bookshelf entirely.`;
+      document.getElementById('danger-copy').textContent = `Delete “${book.title || 'this book'}” only if you want it gone permanently.`;
 
       uiState.initialSnapshot = serializeFormState();
       uiState.dirty = false;
