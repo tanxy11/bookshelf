@@ -5,6 +5,7 @@ RUN_PYTHON := $(if $(wildcard $(VENV_PY)),$(VENV_PY),$(PYTHON))
 VPS_HOST  ?= root@134.199.239.64
 VPS_PATH  ?= /var/www/book.tanxy.net
 VPS_SERVICE ?= bookshelf-api
+VPS_BOT_SERVICE ?= bookshelf-telegram-bot
 STAGING_VPS_HOST ?= $(VPS_HOST)
 STAGING_VPS_PATH ?= /var/www/dev.book.tanxy.net
 STAGING_DOMAIN ?= dev.book.tanxy.net
@@ -16,9 +17,10 @@ STAGING_OPENAI_MODEL ?= gpt-4.1-nano
 FORCE_LLM ?= 0
 
 .PHONY: install parse llm llm-force llm-staging llm-staging-force build refresh-data dev \
-        deploy deploy-sync restart-api backup pull-db push-db \
+        deploy deploy-sync restart-api restart-bot backup pull-db push-db \
         deploy-staging deploy-staging-sync restart-staging-api seed-staging \
-        add-notes-table add-capture-table
+        add-notes-table add-capture-table \
+        bot-status bot-logs bot-restart
 
 install:
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -76,7 +78,7 @@ dev:
 
 # ── Production deploy ────────────────────────────────────────────────────────
 
-deploy: backup deploy-sync restart-api
+deploy: backup deploy-sync restart-api restart-bot
 	@echo "Production deploy complete for $(VPS_HOST):$(VPS_PATH)"
 
 deploy-sync:
@@ -86,12 +88,16 @@ deploy-sync:
 	rsync -avz api/ $(VPS_HOST):$(VPS_PATH)/api/
 	rsync -avz scripts/ $(VPS_HOST):$(VPS_PATH)/scripts/
 	rsync -avz bookshelf_data.py db.py $(VPS_HOST):$(VPS_PATH)/
-	rsync -avz deploy/nginx.conf deploy/bookshelf.service $(VPS_HOST):$(VPS_PATH)/deploy/
+	rsync -avz deploy/nginx.conf deploy/bookshelf.service deploy/telegram-bot.service $(VPS_HOST):$(VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(VPS_HOST):$(VPS_PATH)/
 
 restart-api:
 	@echo "Restarting production service $(VPS_SERVICE)"
 	ssh $(VPS_HOST) "systemctl restart $(VPS_SERVICE) && systemctl is-active $(VPS_SERVICE)"
+
+restart-bot:
+	@echo "Restarting telegram bot service $(VPS_BOT_SERVICE) (if installed)"
+	@ssh $(VPS_HOST) 'if systemctl list-unit-files | grep -q "^$(VPS_BOT_SERVICE).service"; then systemctl restart $(VPS_BOT_SERVICE) && systemctl is-active $(VPS_BOT_SERVICE); else echo "$(VPS_BOT_SERVICE) not installed — skipping"; fi'
 
 backup:
 	@echo "Backing up production database…"
@@ -145,3 +151,14 @@ add-notes-table:
 
 add-capture-table:
 	$(RUN_PYTHON) scripts/add_capture_table.py
+
+# ── Telegram capture bot ────────────────────────────────────────────────────
+
+bot-status:
+	ssh $(VPS_HOST) "systemctl status $(VPS_BOT_SERVICE)"
+
+bot-logs:
+	ssh $(VPS_HOST) "journalctl -u $(VPS_BOT_SERVICE) -f"
+
+bot-restart:
+	ssh $(VPS_HOST) "systemctl restart $(VPS_BOT_SERVICE) && systemctl is-active $(VPS_BOT_SERVICE)"

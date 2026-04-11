@@ -1,0 +1,16 @@
+[Unit]
+Description=Bookshelf Telegram Capture Bot
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/book.tanxy.net
+EnvironmentFile=/etc/bookshelf.env
+ExecStart=/var/www/book.tanxy.net/.venv/bin/python -m api.telegram_bot
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
