@@ -3116,7 +3116,7 @@ async function load() {
     fetchJson('/api/taste-profile'),
     fetchJson('/api/recommendations'),
     fetchJson('/api/health'),
-    fetchJson('/api/activity?limit=3'),
+    fetchJson('/api/activity?view=preview&limit=3'),
   ]);
 
   if (booksResult.status !== 'fulfilled') {

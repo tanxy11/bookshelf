@@ -703,6 +703,24 @@ class ApiSqliteTests(unittest.TestCase):
         os.environ.update(self.original_env)
         self.tempdir.cleanup()
 
+    def _set_activity_created_at(self, activity_id: int, created_at: str) -> None:
+        conn = get_connection(self.db_path)
+        conn.execute(
+            "UPDATE activity_log SET created_at = ? WHERE id = ?",
+            (created_at, activity_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def _set_note_activity_created_at(self, note_id: int, created_at: str) -> None:
+        conn = get_connection(self.db_path)
+        conn.execute(
+            "UPDATE activity_log SET created_at = ? WHERE event_type = 'note_added' AND note_id = ?",
+            (created_at, note_id),
+        )
+        conn.commit()
+        conn.close()
+
     def test_books_endpoint(self):
         resp = self.client.get("/api/books")
         self.assertEqual(resp.status_code, 200)
@@ -1002,6 +1020,177 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(activity[0]["event_type"], "note_added")
         self.assertEqual(activity[0]["note_type"], "quote")
         self.assertEqual(activity[0]["summary"], "Added a quote from Dune")
+
+    def test_activity_preview_collapses_same_day_notes_per_book(self):
+        for content in ("First note.", "Second note.", "Third note."):
+            resp = self.client.post(
+                "/api/books/1/notes",
+                json={"note_type": "thought", "content": content},
+                headers=TEST_AUTH_HEADER,
+            )
+            self.assertEqual(resp.status_code, 201)
+
+        raw = self.client.get("/api/activity?limit=10").json()["items"]
+        preview = self.client.get("/api/activity?view=preview&limit=10").json()["items"]
+
+        self.assertEqual(len(raw), 3)
+        self.assertEqual(len(preview), 1)
+        self.assertEqual(preview[0]["event_type"], "note_added")
+        self.assertEqual(preview[0]["summary"], "Added 3 notes on Dune")
+        self.assertEqual(preview[0]["created_at"], raw[0]["created_at"])
+        self.assertNotIn("note_type", preview[0])
+
+    def test_activity_preview_does_not_collapse_notes_across_pacific_days(self):
+        first = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "Late-night note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        second = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "Early-morning note."},
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+
+        self._set_note_activity_created_at(first.json()["id"], "2026-04-05T06:30:00Z")
+        self._set_note_activity_created_at(second.json()["id"], "2026-04-05T08:30:00Z")
+
+        preview = self.client.get("/api/activity?view=preview&limit=10").json()["items"]
+
+        self.assertEqual(len(preview), 2)
+        self.assertEqual(
+            [item["summary"] for item in preview],
+            ["Added a note on Dune", "Added a note on Dune"],
+        )
+
+    def test_activity_preview_does_not_collapse_notes_for_different_books(self):
+        first = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "Dune note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        second = self.client.post(
+            "/api/books/2/notes",
+            json={"note_type": "thought", "content": "1984 note."},
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+
+        preview = self.client.get("/api/activity?view=preview&limit=10").json()["items"]
+
+        self.assertEqual(len(preview), 2)
+        self.assertEqual(
+            {item["summary"] for item in preview},
+            {"Added a note on Dune", "Added a note on 1984"},
+        )
+
+    def test_activity_preview_does_not_collapse_notes_with_other_event_types(self):
+        first = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "First note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        second = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "quote", "content": "Second note."},
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+
+        conn = get_connection(self.db_path)
+        activity_id = db_module.insert_activity(
+            conn,
+            event_type="started_reading",
+            book_id=1,
+            book_title="Dune",
+            book_author="Frank Herbert",
+        )
+        conn.commit()
+        conn.close()
+
+        self._set_note_activity_created_at(first.json()["id"], "2026-04-05T16:00:00Z")
+        self._set_note_activity_created_at(second.json()["id"], "2026-04-05T17:00:00Z")
+        self._set_activity_created_at(activity_id, "2026-04-05T16:30:00Z")
+
+        preview = self.client.get("/api/activity?view=preview&limit=10").json()["items"]
+
+        self.assertEqual(
+            [item["summary"] for item in preview],
+            ["Added 2 notes on Dune", "Started Dune"],
+        )
+
+    def test_activity_preview_paginates_after_grouping(self):
+        dune_first = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "Dune first."},
+            headers=TEST_AUTH_HEADER,
+        )
+        dune_second = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "Dune second."},
+            headers=TEST_AUTH_HEADER,
+        )
+        nineteen_eighty_four = self.client.post(
+            "/api/books/2/notes",
+            json={"note_type": "thought", "content": "1984 note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        no_date_book = self.client.post(
+            "/api/books/3/notes",
+            json={"note_type": "thought", "content": "No Date Book note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        create = self.client.post(
+            "/api/books",
+            json={"title": "Preview Fourth", "author": "Author", "exclusive_shelf": "to_read"},
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(dune_first.status_code, 201)
+        self.assertEqual(dune_second.status_code, 201)
+        self.assertEqual(nineteen_eighty_four.status_code, 201)
+        self.assertEqual(no_date_book.status_code, 201)
+        self.assertEqual(create.status_code, 201)
+
+        self._set_note_activity_created_at(dune_first.json()["id"], "2026-04-05T17:00:00Z")
+        self._set_note_activity_created_at(dune_second.json()["id"], "2026-04-05T16:00:00Z")
+        self._set_note_activity_created_at(nineteen_eighty_four.json()["id"], "2026-04-05T15:00:00Z")
+        self._set_note_activity_created_at(no_date_book.json()["id"], "2026-04-05T14:00:00Z")
+
+        raw = self.client.get("/api/activity?limit=10").json()["items"]
+        preview_fourth_id = next(
+            item["id"] for item in raw if item["summary"] == "Added Preview Fourth to to-read"
+        )
+        self._set_activity_created_at(preview_fourth_id, "2026-04-05T13:00:00Z")
+
+        first_page = self.client.get("/api/activity?view=preview&limit=3&offset=0").json()
+        second_page = self.client.get("/api/activity?view=preview&limit=3&offset=3").json()
+
+        self.assertEqual(len(first_page["items"]), 3)
+        self.assertTrue(first_page["pagination"]["has_more"])
+        self.assertEqual(first_page["pagination"]["next_offset"], 3)
+        self.assertEqual(
+            [item["summary"] for item in first_page["items"]],
+            [
+                "Added 2 notes on Dune",
+                "Added a note on 1984",
+                "Added a note on No Date Book",
+            ],
+        )
+        self.assertEqual(len(second_page["items"]), 1)
+        self.assertFalse(second_page["pagination"]["has_more"])
+        self.assertEqual(second_page["items"][0]["summary"], "Added Preview Fourth to to-read")
+
+    def test_homepage_activity_preview_requests_preview_view(self):
+        homepage = (ROOT / "site/index.html").read_text(encoding="utf-8")
+        self.assertIn("fetchJson('/api/activity?view=preview&limit=3')", homepage)
 
     def test_create_connection_note_enriches_connected_book(self):
         create = self.client.post(
