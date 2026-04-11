@@ -263,20 +263,21 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
         self.assertIn("book_suggestions", tables)
+        self.assertIn("capture_events", tables)
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_7(self):
+    def test_schema_version_is_8(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 7)
+        self.assertEqual(get_schema_version(conn), 8)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 7)
+        self.assertEqual(get_schema_version(conn), 8)
         conn.close()
 
     def test_existing_notes_table_upgrades_cleanly(self):
@@ -329,11 +330,12 @@ class DbSchemaTests(unittest.TestCase):
             for row in conn.execute("PRAGMA table_info(book_suggestions)").fetchall()
         }
 
-        self.assertEqual(applied, 6)
-        self.assertEqual(get_schema_version(conn), 7)
+        self.assertEqual(applied, 7)
+        self.assertEqual(get_schema_version(conn), 8)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
         self.assertIn("book_suggestions", tables)
+        self.assertIn("capture_events", tables)
         self.assertIn("connected_label", note_columns)
         self.assertIn("connected_url", note_columns)
         self.assertIn("client_ip_hash", suggestion_columns)
@@ -1445,6 +1447,608 @@ class MigrationScriptTests(unittest.TestCase):
         tp = get_llm_cache_value(conn, "taste_profile")
         self.assertEqual(tp["summary"], "A reader of depth.")
         conn.close()
+
+
+# ── Tests: Capture API endpoints ─────────────────────────────────────────────
+
+@unittest.skipIf(TestClient is None, "fastapi is not installed")
+class ApiCaptureTests(unittest.TestCase):
+    """Exercise /api/capture endpoints against a SQLite-backed API."""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.db_path = _make_test_db(self.tempdir.name)
+
+        self.original_env = os.environ.copy()
+        os.environ["DB_PATH"] = str(self.db_path)
+        os.environ.pop("BOOKS_DATA", None)
+        os.environ.pop("LLM_CACHE_DATA", None)
+        os.environ["BOOKSHELF_CORS_ORIGINS"] = "https://book.tanxy.net"
+        for key in (
+            "BOOK_SUGGESTIONS_TO_EMAIL",
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
+            "SMTP_FROM_EMAIL",
+            "SMTP_USE_STARTTLS",
+            "SMTP_USE_SSL",
+            "SMTP_TIMEOUT_SECONDS",
+        ):
+            os.environ.pop(key, None)
+
+        if "api.main" in sys.modules:
+            self.api_main = importlib.reload(sys.modules["api.main"])
+        else:
+            self.api_main = importlib.import_module("api.main")
+
+        self.suggestion_email_config_patcher = patch(
+            "api.suggestions.get_suggestion_email_config",
+            return_value=None,
+        )
+        self.suggestion_email_send_patcher = patch(
+            "api.suggestions.send_book_suggestion_notification",
+        )
+        self.mock_get_suggestion_email_config = self.suggestion_email_config_patcher.start()
+        self.mock_send_book_suggestion_notification = self.suggestion_email_send_patcher.start()
+        self.client = TestClient(self.api_main.app)
+
+    def tearDown(self):
+        self.suggestion_email_send_patcher.stop()
+        self.suggestion_email_config_patcher.stop()
+        os.environ.clear()
+        os.environ.update(self.original_env)
+        self.tempdir.cleanup()
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _conn(self) -> sqlite3.Connection:
+        # Use a fresh short-lived connection instead of store.conn() — the
+        # store connection is pinned to whichever thread first touched it,
+        # and FastAPI's TestClient runs endpoints on a different thread.
+        return get_connection(self.db_path)
+
+    def _seed_capture(
+        self,
+        raw_text: str,
+        *,
+        created_at: str | None = None,
+        status: str = "pending",
+        resolved_book_id: int | None = None,
+        resolved_note_type: str | None = None,
+        resolved_content: str | None = None,
+        resolved_page_or_location: str | None = None,
+        resolved_tags: str | None = None,
+        resolved_at: str | None = None,
+    ) -> int:
+        conn = self._conn()
+        try:
+            if created_at is None:
+                cursor = conn.execute(
+                    "INSERT INTO capture_events "
+                    "(raw_text, source_channel, status, resolved_book_id, "
+                    " resolved_note_type, resolved_content, "
+                    " resolved_page_or_location, resolved_tags, resolved_at) "
+                    "VALUES (?, 'telegram', ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        raw_text,
+                        status,
+                        resolved_book_id,
+                        resolved_note_type,
+                        resolved_content,
+                        resolved_page_or_location,
+                        resolved_tags,
+                        resolved_at,
+                    ),
+                )
+            else:
+                cursor = conn.execute(
+                    "INSERT INTO capture_events "
+                    "(raw_text, source_channel, status, resolved_book_id, "
+                    " resolved_note_type, resolved_content, "
+                    " resolved_page_or_location, resolved_tags, "
+                    " created_at, resolved_at) "
+                    "VALUES (?, 'telegram', ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        raw_text,
+                        status,
+                        resolved_book_id,
+                        resolved_note_type,
+                        resolved_content,
+                        resolved_page_or_location,
+                        resolved_tags,
+                        created_at,
+                        resolved_at,
+                    ),
+                )
+            conn.commit()
+            return int(cursor.lastrowid)
+        finally:
+            conn.close()
+
+    # ── GET /api/capture ─────────────────────────────────────────────────────
+
+    def test_get_captures_empty_initially(self):
+        resp = self.client.get("/api/capture", headers=TEST_AUTH_HEADER)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"captures": [], "count": 0})
+
+    def test_get_captures_requires_auth(self):
+        resp = self.client.get("/api/capture")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_get_captures_rejects_bad_token(self):
+        resp = self.client.get(
+            "/api/capture",
+            headers={"Authorization": "Bearer nope"},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_get_captures_defaults_to_pending_only(self):
+        self._seed_capture("pending one", created_at="2026-04-10T09:00:00Z")
+        self._seed_capture(
+            "applied one",
+            created_at="2026-04-10T10:00:00Z",
+            status="applied",
+        )
+        self._seed_capture(
+            "discarded one",
+            created_at="2026-04-10T11:00:00Z",
+            status="discarded",
+        )
+
+        resp = self.client.get("/api/capture", headers=TEST_AUTH_HEADER)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(len(data["captures"]), 1)
+        self.assertEqual(data["captures"][0]["raw_text"], "pending one")
+        self.assertEqual(data["captures"][0]["status"], "pending")
+
+    def test_get_captures_filters_by_status(self):
+        self._seed_capture("p1", created_at="2026-04-10T09:00:00Z")
+        self._seed_capture("p2", created_at="2026-04-10T10:00:00Z")
+        self._seed_capture(
+            "a1",
+            created_at="2026-04-10T08:00:00Z",
+            status="applied",
+        )
+        self._seed_capture(
+            "d1",
+            created_at="2026-04-10T07:00:00Z",
+            status="discarded",
+        )
+
+        resp = self.client.get(
+            "/api/capture?status=applied", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["captures"][0]["raw_text"], "a1")
+
+        resp = self.client.get(
+            "/api/capture?status=discarded", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(resp.json()["captures"][0]["raw_text"], "d1")
+
+        resp = self.client.get(
+            "/api/capture?status=all", headers=TEST_AUTH_HEADER
+        )
+        data = resp.json()
+        self.assertEqual(data["count"], 4)
+
+    def test_get_captures_orders_oldest_first(self):
+        self._seed_capture("third", created_at="2026-04-10T12:00:00Z")
+        self._seed_capture("first", created_at="2026-04-10T09:00:00Z")
+        self._seed_capture("second", created_at="2026-04-10T10:00:00Z")
+
+        resp = self.client.get("/api/capture", headers=TEST_AUTH_HEADER)
+        data = resp.json()
+        self.assertEqual(
+            [c["raw_text"] for c in data["captures"]],
+            ["first", "second", "third"],
+        )
+
+    def test_get_captures_rejects_bad_status(self):
+        resp = self.client.get(
+            "/api/capture?status=bogus", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_capture_response_shape(self):
+        self._seed_capture(
+            "shape test",
+            created_at="2026-04-10T09:00:00Z",
+            resolved_book_id=1,
+            resolved_note_type="thought",
+            resolved_content="cleaned",
+            resolved_page_or_location="p.10",
+            resolved_tags='["tagA"]',
+        )
+        resp = self.client.get("/api/capture", headers=TEST_AUTH_HEADER)
+        cap = resp.json()["captures"][0]
+        self.assertEqual(
+            set(cap.keys()),
+            {
+                "id",
+                "raw_text",
+                "source_channel",
+                "status",
+                "resolved_book_id",
+                "resolved_note_type",
+                "resolved_content",
+                "resolved_page_or_location",
+                "resolved_tags",
+                "created_at",
+                "resolved_at",
+            },
+        )
+        self.assertEqual(cap["source_channel"], "telegram")
+        self.assertEqual(cap["resolved_book_id"], 1)
+        self.assertEqual(cap["resolved_tags"], '["tagA"]')
+
+    # ── PUT /api/capture/{id} ────────────────────────────────────────────────
+
+    def test_put_updates_resolved_fields(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={
+                "resolved_book_id": 1,
+                "resolved_note_type": "thought",
+                "resolved_content": "cleaned",
+                "resolved_page_or_location": "p.171",
+                "resolved_tags": ["limit-of-language", "truth"],
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"id": cid, "status": "updated"})
+
+        row = self._conn().execute(
+            "SELECT * FROM capture_events WHERE id = ?", (cid,)
+        ).fetchone()
+        self.assertEqual(row["resolved_book_id"], 1)
+        self.assertEqual(row["resolved_note_type"], "thought")
+        self.assertEqual(row["resolved_content"], "cleaned")
+        self.assertEqual(row["resolved_page_or_location"], "p.171")
+        self.assertEqual(
+            json.loads(row["resolved_tags"]),
+            ["limit-of-language", "truth"],
+        )
+        self.assertEqual(row["status"], "pending")
+        self.assertIsNone(row["resolved_at"])
+
+    def test_put_accepts_partial_update_and_preserves_other_fields(self):
+        cid = self._seed_capture(
+            "raw",
+            resolved_book_id=1,
+            resolved_note_type="thought",
+            resolved_content="original",
+        )
+        # Send only resolved_content — other fields should be untouched.
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_content": "edited"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        row = self._conn().execute(
+            "SELECT * FROM capture_events WHERE id = ?", (cid,)
+        ).fetchone()
+        self.assertEqual(row["resolved_book_id"], 1)
+        self.assertEqual(row["resolved_note_type"], "thought")
+        self.assertEqual(row["resolved_content"], "edited")
+
+    def test_put_null_clears_field(self):
+        cid = self._seed_capture(
+            "raw",
+            resolved_book_id=1,
+            resolved_note_type="thought",
+        )
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_book_id": None},
+        )
+        self.assertEqual(resp.status_code, 200)
+        row = self._conn().execute(
+            "SELECT resolved_book_id, resolved_note_type FROM capture_events WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        self.assertIsNone(row["resolved_book_id"])
+        self.assertEqual(row["resolved_note_type"], "thought")
+
+    def test_put_404_when_capture_not_found(self):
+        resp = self.client.put(
+            "/api/capture/9999",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_content": "hi"},
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_put_400_when_capture_already_applied(self):
+        cid = self._seed_capture("raw", status="applied")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_content": "too late"},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("already applied", resp.json()["detail"])
+
+    def test_put_400_when_capture_already_discarded(self):
+        cid = self._seed_capture("raw", status="discarded")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_content": "nope"},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("already discarded", resp.json()["detail"])
+
+    def test_put_422_on_bad_note_type(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_note_type": "rambling"},
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_put_404_when_resolved_book_does_not_exist(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_book_id": 99999},
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["detail"], "Book not found.")
+
+    def test_put_422_on_bad_tags_type(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_tags": "not-a-list"},
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_put_422_on_tags_with_non_strings(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_tags": ["ok", 42]},
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_put_422_on_bad_book_id_type(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.put(
+            f"/api/capture/{cid}",
+            headers=TEST_AUTH_HEADER,
+            json={"resolved_book_id": "not-a-number"},
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_put_requires_auth(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.put(
+            f"/api/capture/{cid}", json={"resolved_content": "x"}
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    # ── POST /api/capture/{id}/apply ─────────────────────────────────────────
+
+    def _seed_ready_to_apply(self) -> int:
+        return self._seed_capture(
+            "BK p171 — Alyosha feels closer to truth",
+            created_at="2026-04-09T22:30:00Z",
+            resolved_book_id=1,
+            resolved_note_type="thought",
+            resolved_content="Alyosha feels closer to truth (edited)",
+            resolved_page_or_location="p.171",
+            resolved_tags='["limit-of-language"]',
+        )
+
+    def test_apply_creates_note_and_marks_capture_applied(self):
+        cid = self._seed_ready_to_apply()
+
+        resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 201)
+        body = resp.json()
+        self.assertEqual(body["capture_id"], cid)
+        self.assertEqual(body["status"], "applied")
+        note_id = body["note_id"]
+        self.assertIsInstance(note_id, int)
+
+        # Note row
+        note = self._conn().execute(
+            "SELECT * FROM notes WHERE id = ?", (note_id,)
+        ).fetchone()
+        self.assertIsNotNone(note)
+        self.assertEqual(note["source_type"], "book")
+        self.assertEqual(note["source_id"], 1)
+        self.assertEqual(note["note_type"], "thought")
+        self.assertEqual(
+            note["content"], "Alyosha feels closer to truth (edited)"
+        )
+        self.assertEqual(note["page_or_location"], "p.171")
+        self.assertEqual(note["tags"], '["limit-of-language"]')
+
+        # Note's created_at comes from the capture, not the apply moment
+        self.assertEqual(note["created_at"], "2026-04-09T22:30:00Z")
+
+        # Capture row updated
+        cap = self._conn().execute(
+            "SELECT status, resolved_at FROM capture_events WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        self.assertEqual(cap["status"], "applied")
+        self.assertIsNotNone(cap["resolved_at"])
+
+    def test_apply_shows_up_in_books_notes_endpoint(self):
+        cid = self._seed_ready_to_apply()
+        apply_resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        note_id = apply_resp.json()["note_id"]
+
+        resp = self.client.get("/api/books/1/notes")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        ids = [n["id"] for n in data["notes"]]
+        self.assertIn(note_id, ids)
+
+    def test_apply_logs_activity(self):
+        cid = self._seed_ready_to_apply()
+        self.client.post(f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER)
+
+        rows = self._conn().execute(
+            "SELECT event_type, book_id, note_type FROM activity_log "
+            "WHERE event_type = 'note_added'"
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["book_id"], 1)
+        self.assertEqual(rows[0]["note_type"], "thought")
+
+    def test_apply_again_returns_400(self):
+        cid = self._seed_ready_to_apply()
+        self.client.post(f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER)
+
+        resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("already applied", resp.json()["detail"])
+
+    def test_apply_400_when_missing_book(self):
+        cid = self._seed_capture(
+            "raw",
+            resolved_note_type="thought",
+            resolved_content="edited",
+        )
+        resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("resolved_book_id", resp.json()["detail"])
+
+    def test_apply_400_when_missing_note_type(self):
+        cid = self._seed_capture(
+            "raw", resolved_book_id=1, resolved_content="edited"
+        )
+        resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("resolved_note_type", resp.json()["detail"])
+
+    def test_apply_400_when_missing_content(self):
+        cid = self._seed_capture(
+            "raw", resolved_book_id=1, resolved_note_type="thought"
+        )
+        resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("resolved_content", resp.json()["detail"])
+
+    def test_apply_400_when_content_is_whitespace_only(self):
+        cid = self._seed_capture(
+            "raw",
+            resolved_book_id=1,
+            resolved_note_type="thought",
+            resolved_content="   \n\t  ",
+        )
+        resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_apply_400_when_capture_not_found(self):
+        resp = self.client.post(
+            "/api/capture/9999/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_apply_400_when_book_was_deleted(self):
+        cid = self._seed_capture(
+            "raw",
+            resolved_book_id=1,
+            resolved_note_type="thought",
+            resolved_content="edited",
+        )
+        self.client.delete("/api/books/1", headers=TEST_AUTH_HEADER)
+
+        resp = self.client.post(
+            f"/api/capture/{cid}/apply", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("no longer exists", resp.json()["detail"])
+
+    def test_apply_requires_auth(self):
+        cid = self._seed_ready_to_apply()
+        resp = self.client.post(f"/api/capture/{cid}/apply")
+        self.assertEqual(resp.status_code, 401)
+
+    # ── POST /api/capture/{id}/discard ───────────────────────────────────────
+
+    def test_discard_marks_capture_discarded(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.post(
+            f"/api/capture/{cid}/discard", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"id": cid, "status": "discarded"})
+
+        cap = self._conn().execute(
+            "SELECT status, resolved_at FROM capture_events WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        self.assertEqual(cap["status"], "discarded")
+        self.assertIsNotNone(cap["resolved_at"])
+
+    def test_discard_does_not_create_note(self):
+        cid = self._seed_capture("raw")
+        self.client.post(
+            f"/api/capture/{cid}/discard", headers=TEST_AUTH_HEADER
+        )
+        row = self._conn().execute(
+            "SELECT COUNT(*) as c FROM notes"
+        ).fetchone()
+        self.assertEqual(row["c"], 0)
+
+    def test_discard_400_when_already_applied(self):
+        cid = self._seed_capture("raw", status="applied")
+        resp = self.client.post(
+            f"/api/capture/{cid}/discard", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_discard_400_when_already_discarded(self):
+        cid = self._seed_capture("raw", status="discarded")
+        resp = self.client.post(
+            f"/api/capture/{cid}/discard", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_discard_400_when_capture_not_found(self):
+        resp = self.client.post(
+            "/api/capture/9999/discard", headers=TEST_AUTH_HEADER
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_discard_requires_auth(self):
+        cid = self._seed_capture("raw")
+        resp = self.client.post(f"/api/capture/{cid}/discard")
+        self.assertEqual(resp.status_code, 401)
 
 
 if __name__ == "__main__":
