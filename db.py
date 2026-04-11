@@ -198,6 +198,31 @@ def _migration_v7(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE books DROP COLUMN notes")
 
 
+_CAPTURE_EVENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS capture_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    raw_text TEXT NOT NULL,
+    source_channel TEXT NOT NULL DEFAULT 'telegram',
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'applied', 'discarded')),
+    resolved_book_id INTEGER,
+    resolved_note_type TEXT,
+    resolved_content TEXT,
+    resolved_page_or_location TEXT,
+    resolved_tags TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_capture_status ON capture_events(status);
+CREATE INDEX IF NOT EXISTS idx_capture_created ON capture_events(created_at);
+"""
+
+
+def _migration_v8(conn: sqlite3.Connection) -> None:
+    conn.executescript(_CAPTURE_EVENTS_SCHEMA)
+
+
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _migration_v1),
     (2, _migration_v2),
@@ -206,6 +231,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (5, _migration_v5),
     (6, _migration_v6),
     (7, _migration_v7),
+    (8, _migration_v8),
 ]
 
 
