@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query
 
 from db import list_activity_rows
 
 router = APIRouter(prefix="/api/activity")
+
+_PREVIEW_TIMEZONE = ZoneInfo("America/Los_Angeles")
+_PREVIEW_FETCH_BATCH = 200
 
 
 def _get_deps() -> tuple:
@@ -37,12 +42,17 @@ def _summary_for_row(row: dict[str, Any]) -> str:
     return f"Added a note on {title}"
 
 
-def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
+def _serialize_row(
+    row: dict[str, Any],
+    *,
+    summary: str | None = None,
+    include_note_type: bool = True,
+) -> dict[str, Any]:
     payload = {
         "id": row["id"],
         "event_type": row["event_type"],
         "created_at": row["created_at"],
-        "summary": _summary_for_row(row),
+        "summary": summary or _summary_for_row(row),
         "book": {
             "id": row["book_id"],
             "title": row["book_title"],
@@ -50,9 +60,77 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
             "href": _book_href(row["book_id"], bool(row["book_exists"])),
         },
     }
-    if row.get("note_type"):
+    if include_note_type and row.get("note_type"):
         payload["note_type"] = row["note_type"]
     return payload
+
+
+def _list_all_activity_rows(conn) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    offset = 0
+
+    while True:
+        batch = list_activity_rows(conn, limit=_PREVIEW_FETCH_BATCH, offset=offset)
+        rows.extend(batch)
+        if len(batch) < _PREVIEW_FETCH_BATCH:
+            break
+        offset += _PREVIEW_FETCH_BATCH
+
+    return rows
+
+
+def _note_preview_group_key(row: dict[str, Any]) -> tuple[int, str] | None:
+    if row.get("event_type") != "note_added":
+        return None
+
+    created_at = row.get("created_at")
+    if not created_at:
+        return None
+
+    try:
+        timestamp = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    local_day = timestamp.astimezone(_PREVIEW_TIMEZONE).date().isoformat()
+    return row["book_id"], local_day
+
+
+def _serialize_preview_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    preview_entries: list[dict[str, Any]] = []
+    note_group_indexes: dict[tuple[int, str], int] = {}
+
+    for row in rows:
+        group_key = _note_preview_group_key(row)
+        if group_key is None:
+            preview_entries.append({"row": row, "count": 1})
+            continue
+
+        existing_index = note_group_indexes.get(group_key)
+        if existing_index is None:
+            note_group_indexes[group_key] = len(preview_entries)
+            preview_entries.append({"row": row, "count": 1})
+            continue
+
+        preview_entries[existing_index]["count"] += 1
+
+    items: list[dict[str, Any]] = []
+    for entry in preview_entries:
+        row = entry["row"]
+        count = entry["count"]
+        if count > 1:
+            title = row.get("book_title") or "Untitled"
+            items.append(
+                _serialize_row(
+                    row,
+                    summary=f"Added {count} notes on {title}",
+                    include_note_type=False,
+                )
+            )
+            continue
+        items.append(_serialize_row(row))
+
+    return items
 
 
 def _empty_response(limit: int, offset: int) -> dict[str, Any]:
@@ -71,17 +149,26 @@ def _empty_response(limit: int, offset: int) -> dict[str, Any]:
 async def get_activity(
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    view: str | None = Query(default=None),
 ) -> dict[str, Any]:
     store, USE_SQLITE = _get_deps()
     if not USE_SQLITE:
         return _empty_response(limit, offset)
 
-    rows = list_activity_rows(store.conn(), limit=limit + 1, offset=offset)
-    has_more = len(rows) > limit
-    visible_rows = rows[:limit]
+    conn = store.conn()
+    requested_view = (view or "").strip().lower()
+
+    if requested_view == "preview":
+        items = _serialize_preview_rows(_list_all_activity_rows(conn))
+        has_more = len(items) > offset + limit
+        visible_items = items[offset:offset + limit]
+    else:
+        rows = list_activity_rows(conn, limit=limit + 1, offset=offset)
+        has_more = len(rows) > limit
+        visible_items = [_serialize_row(row) for row in rows[:limit]]
 
     return {
-        "items": [_serialize_row(row) for row in visible_rows],
+        "items": visible_items,
         "pagination": {
             "limit": limit,
             "offset": offset,
