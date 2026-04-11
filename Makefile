@@ -2,7 +2,12 @@ PYTHON    ?= python3
 VENV_DIR  ?= .venv
 VENV_PY   := $(VENV_DIR)/bin/python
 RUN_PYTHON := $(if $(wildcard $(VENV_PY)),$(VENV_PY),$(PYTHON))
-VPS_HOST  ?= root@134.199.239.64
+
+# VPS settings — set VPS_HOST in your shell (`export VPS_HOST=user@host`) or
+# pass it on the command line (`make deploy VPS_HOST=user@host`). There is
+# intentionally NO default so the production host never lands in git. See
+# .env.example for the variables you should keep in your local environment.
+VPS_HOST  ?=
 VPS_PATH  ?= /var/www/book.tanxy.net
 VPS_SERVICE ?= bookshelf-api
 VPS_BOT_SERVICE ?= bookshelf-telegram-bot
@@ -20,7 +25,16 @@ FORCE_LLM ?= 0
         deploy deploy-sync restart-api restart-bot backup pull-db push-db \
         deploy-staging deploy-staging-sync restart-staging-api seed-staging \
         add-notes-table add-capture-table \
-        bot-status bot-logs bot-restart
+        bot-status bot-logs bot-restart \
+        require-vps-host
+
+require-vps-host:
+	@if [ -z "$(VPS_HOST)" ]; then \
+		echo "ERROR: VPS_HOST is not set."; \
+		echo "  export VPS_HOST=user@your.vps.host"; \
+		echo "or pass it inline: make deploy VPS_HOST=user@your.vps.host"; \
+		exit 1; \
+	fi
 
 install:
 	$(PYTHON) -m venv $(VENV_DIR)
@@ -78,10 +92,10 @@ dev:
 
 # ── Production deploy ────────────────────────────────────────────────────────
 
-deploy: backup deploy-sync restart-api restart-bot
+deploy: require-vps-host backup deploy-sync restart-api restart-bot
 	@echo "Production deploy complete for $(VPS_HOST):$(VPS_PATH)"
 
-deploy-sync:
+deploy-sync: require-vps-host
 	@echo "Syncing code to $(VPS_HOST):$(VPS_PATH)"
 	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/site $(VPS_PATH)/data $(VPS_PATH)/api $(VPS_PATH)/scripts $(VPS_PATH)/deploy'
 	rsync -avz --delete site/ $(VPS_HOST):$(VPS_PATH)/site/
@@ -91,26 +105,26 @@ deploy-sync:
 	rsync -avz deploy/nginx.conf deploy/bookshelf.service deploy/telegram-bot.service $(VPS_HOST):$(VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(VPS_HOST):$(VPS_PATH)/
 
-restart-api:
+restart-api: require-vps-host
 	@echo "Restarting production service $(VPS_SERVICE)"
 	ssh $(VPS_HOST) "systemctl restart $(VPS_SERVICE) && systemctl is-active $(VPS_SERVICE)"
 
-restart-bot:
+restart-bot: require-vps-host
 	@echo "Restarting telegram bot service $(VPS_BOT_SERVICE) (if installed)"
 	@ssh $(VPS_HOST) 'if systemctl list-unit-files | grep -q "^$(VPS_BOT_SERVICE).service"; then systemctl restart $(VPS_BOT_SERVICE) && systemctl is-active $(VPS_BOT_SERVICE); else echo "$(VPS_BOT_SERVICE) not installed — skipping"; fi'
 
-backup:
+backup: require-vps-host
 	@echo "Backing up production database…"
 	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/data/backups && cp $(VPS_PATH)/data/bookshelf.db $(VPS_PATH)/data/backups/bookshelf-$$(date +%Y%m%d-%H%M%S).db'
 	@echo "Backup complete."
 
 # ── Staging deploy ───────────────────────────────────────────────────────────
 
-deploy-staging: deploy-staging-sync restart-staging-api
+deploy-staging: require-vps-host deploy-staging-sync restart-staging-api
 	@echo "Staging deploy complete for $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)"
 	@echo "Staging domain: https://$(STAGING_DOMAIN)"
 
-deploy-staging-sync:
+deploy-staging-sync: require-vps-host
 	@echo "Syncing code to $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)"
 	ssh $(STAGING_VPS_HOST) 'mkdir -p $(STAGING_VPS_PATH)/site $(STAGING_VPS_PATH)/data $(STAGING_VPS_PATH)/api $(STAGING_VPS_PATH)/scripts $(STAGING_VPS_PATH)/deploy'
 	rsync -avz --delete site/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/site/
@@ -120,25 +134,25 @@ deploy-staging-sync:
 	rsync -avz deploy/nginx.staging.conf deploy/nginx.staging.bootstrap.conf deploy/bookshelf-staging.service deploy/staging.env.example $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/deploy/
 	rsync -avz .env.example README.md Makefile $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/
 
-restart-staging-api:
+restart-staging-api: require-vps-host
 	@echo "Restarting staging service $(STAGING_SERVICE)"
 	ssh $(STAGING_VPS_HOST) "systemctl restart $(STAGING_SERVICE) && systemctl is-active $(STAGING_SERVICE)"
 
 # ── Database management ─────────────────────────────────────────────────────
 
-pull-db:
+pull-db: require-vps-host
 	@echo "Pulling production database to local…"
 	scp $(VPS_HOST):$(VPS_PATH)/data/bookshelf.db data/bookshelf.db
 	@echo "Done. Local data/bookshelf.db updated."
 
-push-db:
+push-db: require-vps-host
 	@echo "⚠  This will OVERWRITE the production database on the VPS."
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] || (echo "Aborted." && exit 1)
 	scp data/bookshelf.db $(VPS_HOST):$(VPS_PATH)/data/bookshelf.db
 	@echo "Pushed. Restart the API to pick up the new database:"
 	@echo "  make restart-api"
 
-seed-staging:
+seed-staging: require-vps-host
 	@echo "Copying production DB to staging on VPS…"
 	ssh $(VPS_HOST) 'cp $(VPS_PATH)/data/bookshelf.db $(STAGING_VPS_PATH)/data/bookshelf.db'
 	@echo "Done. Restart staging to pick up the new database:"
@@ -154,11 +168,11 @@ add-capture-table:
 
 # ── Telegram capture bot ────────────────────────────────────────────────────
 
-bot-status:
+bot-status: require-vps-host
 	ssh $(VPS_HOST) "systemctl status $(VPS_BOT_SERVICE)"
 
-bot-logs:
+bot-logs: require-vps-host
 	ssh $(VPS_HOST) "journalctl -u $(VPS_BOT_SERVICE) -f"
 
-bot-restart:
+bot-restart: require-vps-host
 	ssh $(VPS_HOST) "systemctl restart $(VPS_BOT_SERVICE) && systemctl is-active $(VPS_BOT_SERVICE)"
