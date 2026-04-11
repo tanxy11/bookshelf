@@ -57,6 +57,22 @@
     }
     .back { display: inline-block; margin-bottom: 20px; font-size: .92rem; color: var(--muted); font-weight: 500; }
     .back:hover { color: var(--accent-deep); }
+    .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+    .nav-row .back { margin-bottom: 0; }
+    .inbox-nav-link {
+      display: none; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border);
+      background: rgba(255, 250, 243, 0.8); color: var(--accent-deep);
+      font-size: .78rem; font-weight: 500; text-decoration: none;
+    }
+    body.authed .inbox-nav-link { display: inline-flex; }
+    .inbox-nav-link:hover { background: rgba(122, 92, 62, 0.1); border-color: var(--border-strong); }
+    .inbox-nav-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px;
+      background: var(--accent-deep); color: #fff; font-size: .68rem; font-weight: 700; line-height: 1;
+    }
+    .inbox-nav-badge.hidden { display: none; }
 
     /* Hero */
     .hero {
@@ -335,7 +351,10 @@
 </head>
 <body>
 <div class="container">
-  <a class="back" href="index.html">&larr; Back to bookshelf</a>
+  <div class="nav-row">
+    <a class="back" href="index.html">&larr; Back to bookshelf</a>
+    <a class="inbox-nav-link" href="inbox.html" id="inbox-nav-link">Inbox<span class="inbox-nav-badge hidden" id="inbox-nav-badge"></span></a>
+  </div>
   <div class="loading" id="loading">Loading book...</div>
   <div id="content" style="display:none">
     <div class="hero" id="hero"></div>
@@ -1037,6 +1056,27 @@ async function loadPage() {
     document.getElementById('loading').textContent = `Failed to load: ${err.message}`;
   }
 }
+
+if (isAuth()) document.body.classList.add('authed');
+
+async function refreshInboxBadge() {
+  if (!isAuth()) return;
+  const badge = document.getElementById('inbox-nav-badge');
+  if (!badge) return;
+  try {
+    const resp = await fetch(`${apiBase}/api/capture`, {
+      headers: { 'Authorization': `Bearer ${getToken()}` },
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const count = data.count || 0;
+    if (count > 0) {
+      badge.textContent = String(count);
+      badge.classList.remove('hidden');
+    }
+  } catch (_) { /* non-blocking */ }
+}
+refreshInboxBadge();
 
 loadPage();
 </script>
