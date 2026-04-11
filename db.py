@@ -444,9 +444,11 @@ def list_activity_rows(
                activity_log.book_author,
                activity_log.note_type,
                activity_log.created_at,
-               CASE WHEN books.id IS NULL THEN 0 ELSE 1 END AS book_exists
+               CASE WHEN books.id IS NULL THEN 0 ELSE 1 END AS book_exists,
+               CASE WHEN notes.id IS NULL THEN 0 ELSE 1 END AS note_exists
            FROM activity_log
            LEFT JOIN books ON books.id = activity_log.book_id
+           LEFT JOIN notes ON notes.id = activity_log.note_id
            ORDER BY activity_log.created_at DESC, activity_log.id DESC
            LIMIT ? OFFSET ?""",
         (limit, offset),

@@ -1021,6 +1021,53 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(activity[0]["note_type"], "quote")
         self.assertEqual(activity[0]["summary"], "Added a quote from Dune")
 
+    def test_delete_note_hides_note_added_from_activity(self):
+        create = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "First note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        note_id = create.json()["id"]
+
+        delete = self.client.delete(
+            f"/api/books/1/notes/{note_id}",
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(create.status_code, 201)
+        self.assertEqual(delete.status_code, 200)
+        self.assertEqual(self.client.get("/api/activity?limit=10").json()["items"], [])
+
+        conn = get_connection(self.db_path)
+        rows = conn.execute(
+            "SELECT event_type, note_id FROM activity_log WHERE note_id = ?",
+            (note_id,),
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["event_type"], "note_added")
+        self.assertEqual(rows[0]["note_id"], note_id)
+        conn.close()
+
+    def test_delete_note_hides_note_added_from_preview_activity(self):
+        create = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "First note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        note_id = create.json()["id"]
+
+        delete = self.client.delete(
+            f"/api/books/1/notes/{note_id}",
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(create.status_code, 201)
+        self.assertEqual(delete.status_code, 200)
+        self.assertEqual(
+            self.client.get("/api/activity?view=preview&limit=10").json()["items"],
+            [],
+        )
+
     def test_activity_preview_collapses_same_day_notes_per_book(self):
         for content in ("First note.", "Second note.", "Third note."):
             resp = self.client.post(
@@ -1039,6 +1086,29 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(preview[0]["summary"], "Added 3 notes on Dune")
         self.assertEqual(preview[0]["created_at"], raw[0]["created_at"])
         self.assertNotIn("note_type", preview[0])
+
+    def test_activity_preview_burst_count_shrinks_when_note_is_deleted(self):
+        note_ids = []
+        for content in ("First note.", "Second note.", "Third note."):
+            resp = self.client.post(
+                "/api/books/1/notes",
+                json={"note_type": "thought", "content": content},
+                headers=TEST_AUTH_HEADER,
+            )
+            self.assertEqual(resp.status_code, 201)
+            note_ids.append(resp.json()["id"])
+
+        before_delete = self.client.get("/api/activity?view=preview&limit=10").json()["items"]
+        delete = self.client.delete(
+            f"/api/books/1/notes/{note_ids[0]}",
+            headers=TEST_AUTH_HEADER,
+        )
+        after_delete = self.client.get("/api/activity?view=preview&limit=10").json()["items"]
+
+        self.assertEqual(delete.status_code, 200)
+        self.assertEqual(before_delete[0]["summary"], "Added 3 notes on Dune")
+        self.assertEqual(len(after_delete), 1)
+        self.assertEqual(after_delete[0]["summary"], "Added 2 notes on Dune")
 
     def test_activity_preview_does_not_collapse_notes_across_pacific_days(self):
         first = self.client.post(
@@ -1188,6 +1258,42 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertFalse(second_page["pagination"]["has_more"])
         self.assertEqual(second_page["items"][0]["summary"], "Added Preview Fourth to to-read")
 
+    def test_activity_pagination_backfills_past_deleted_note_entries(self):
+        for title in ("First", "Second", "Third"):
+            resp = self.client.post(
+                "/api/books",
+                json={"title": title, "author": "Author", "exclusive_shelf": "to_read"},
+                headers=TEST_AUTH_HEADER,
+            )
+            self.assertEqual(resp.status_code, 201)
+
+        create = self.client.post(
+            "/api/books/1/notes",
+            json={"note_type": "thought", "content": "Transient note."},
+            headers=TEST_AUTH_HEADER,
+        )
+        note_id = create.json()["id"]
+        delete = self.client.delete(
+            f"/api/books/1/notes/{note_id}",
+            headers=TEST_AUTH_HEADER,
+        )
+
+        self.assertEqual(create.status_code, 201)
+        self.assertEqual(delete.status_code, 200)
+
+        first_page = self.client.get("/api/activity?limit=3&offset=0").json()
+
+        self.assertEqual(len(first_page["items"]), 3)
+        self.assertFalse(first_page["pagination"]["has_more"])
+        self.assertEqual(
+            [item["summary"] for item in first_page["items"]],
+            [
+                "Added Third to to-read",
+                "Added Second to to-read",
+                "Added First to to-read",
+            ],
+        )
+
     def test_homepage_activity_preview_requests_preview_view(self):
         homepage = (ROOT / "site/index.html").read_text(encoding="utf-8")
         self.assertIn("fetchJson('/api/activity?view=preview&limit=3')", homepage)
@@ -1322,9 +1428,15 @@ class ApiSqliteTests(unittest.TestCase):
 
         self.assertEqual(update.status_code, 200)
         self.assertEqual(delete.status_code, 200)
-        activity = self.client.get("/api/activity?limit=10").json()["items"]
-        self.assertEqual(len(activity), 1)
-        self.assertEqual(activity[0]["event_type"], "note_added")
+        self.assertEqual(self.client.get("/api/activity?limit=10").json()["items"], [])
+
+        conn = get_connection(self.db_path)
+        rows = conn.execute(
+            "SELECT event_type FROM activity_log WHERE note_id = ? ORDER BY id",
+            (note_id,),
+        ).fetchall()
+        self.assertEqual([row["event_type"] for row in rows], ["note_added"])
+        conn.close()
 
     def test_failed_note_creation_does_not_log_activity(self):
         resp = self.client.post(
