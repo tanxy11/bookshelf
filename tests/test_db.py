@@ -571,6 +571,8 @@ class BookshelfDBTests(unittest.TestCase):
             "status", "generated_at", "books_generated_at",
             "llm_generated_at", "books_hash", "dry_run",
             "has_books", "has_taste_profile", "has_recommendations",
+            "llm_input_hash", "current_llm_input_hash",
+            "llm_outdated", "llm_targets",
         }
         self.assertEqual(set(h.keys()), expected_keys)
         self.assertEqual(h["status"], "ok")
