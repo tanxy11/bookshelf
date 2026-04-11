@@ -706,6 +706,19 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(len(data["books"]["read"]), 3)
         self.assertEqual(data["books"]["read"][0]["title"], "Dune")
 
+    def test_single_book_endpoint(self):
+        resp = self.client.get("/api/books/1")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["title"], "Dune")
+        self.assertEqual(data["author"], "Frank Herbert")
+        self.assertEqual(data["note_count"], 0)
+
+    def test_single_book_endpoint_not_found(self):
+        resp = self.client.get("/api/books/99999")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["detail"], "Book not found.")
+
     def test_taste_profile_endpoint(self):
         resp = self.client.get("/api/taste-profile")
         self.assertEqual(resp.status_code, 200)

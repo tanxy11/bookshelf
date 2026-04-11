@@ -4,447 +4,1760 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Edit Book — Xinyu's Bookshelf</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #f4efe6; --surface: rgba(255,251,245,0.8); --border: rgba(122,92,62,0.16);
-      --border-strong: rgba(122,92,62,0.28); --muted: #7c7267; --text: #261f18;
-      --accent: #7a5c3e; --accent-deep: #5f4329; --accent-soft: #efe1cf;
-      --olive: #5e6954; --olive-soft: #e5ebdd; --danger: #8c5d58; --danger-soft: rgba(140,93,88,0.1);
-      --radius: 14px;
+      --bg: #f7efe4;
+      --bg-wash: #f1e4d4;
+      --surface: rgba(255, 252, 248, 0.92);
+      --surface-strong: rgba(255, 250, 244, 0.98);
+      --surface-muted: rgba(247, 239, 230, 0.82);
+      --border: rgba(121, 94, 72, 0.12);
+      --border-strong: rgba(121, 94, 72, 0.22);
+      --muted: #7d7067;
+      --text: #342922;
+      --accent: #9b7258;
+      --accent-deep: #76523e;
+      --accent-soft: #f2dfce;
+      --accent-glow: rgba(155, 114, 88, 0.14);
+      --olive: #68735d;
+      --olive-soft: #e7ecdf;
+      --olive-strong: #55604b;
+      --danger: #9c6b67;
+      --danger-soft: rgba(156, 107, 103, 0.12);
+      --star-on: #c69056;
+      --star-off: #dfd3c4;
+      --shadow-soft: 0 18px 46px rgba(69, 52, 35, 0.08);
+      --shadow-card: 0 10px 28px rgba(79, 57, 40, 0.06);
+      --radius-xl: 26px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+      --radius-sm: 12px;
     }
-    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; min-height: 100vh; }
+
+    body {
+      font-family: 'Alegreya Sans', system-ui, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(255, 248, 241, 0.95), transparent 34%),
+        radial-gradient(circle at top right, rgba(240, 223, 205, 0.4), transparent 25%),
+        linear-gradient(180deg, #fbf7f2 0%, var(--bg) 36%, var(--bg-wash) 100%);
+      color: var(--text);
+      font-size: 17px;
+      line-height: 1.6;
+      min-height: 100vh;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      padding: 32px 20px 96px;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.1), transparent 28%),
+        radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.15), transparent 18%);
+      opacity: 0.8;
+    }
+
     a { color: var(--accent-deep); text-decoration: none; }
-    .container { max-width: 640px; margin: 0 auto; padding: 24px; }
-    h1 { font-family: 'Cormorant Garamond', serif; font-size: 2rem; font-weight: 600; margin-bottom: 8px; }
-    .back { display: inline-block; margin-bottom: 16px; font-size: .85rem; color: var(--muted); }
-    .back:hover { color: var(--accent-deep); }
+    a:hover { color: var(--accent); }
+    button, input, textarea, select { font: inherit; }
 
-    form { display: grid; gap: 16px; }
-    .form-group { display: grid; gap: 4px; }
-    .form-group label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-    .form-group input, .form-group textarea, .form-group select {
-      padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
-      background: rgba(255,255,255,0.8); font-size: .88rem; font-family: inherit; color: var(--text);
+    .page-shell {
+      width: min(980px, 100%);
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
     }
-    .form-group textarea { min-height: 200px; resize: vertical; line-height: 1.6; }
-    .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
-      outline: none; border-color: rgba(122,92,62,0.42); box-shadow: 0 0 0 3px rgba(122,92,62,0.08);
-    }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-    .btn { padding: 12px 24px; border: none; border-radius: 12px; font-family: inherit; font-size: .9rem; font-weight: 600; cursor: pointer; transition: background .14s, transform .14s; }
-    .btn-primary { background: var(--accent-deep); color: #fff; }
-    .btn-primary:hover { background: var(--accent); transform: translateY(-1px); }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-    .btn-danger { background: var(--danger-soft); color: var(--danger); border: 1px solid rgba(140,93,88,0.2); }
-    .btn-danger:hover { background: rgba(140,93,88,0.18); }
-    .btn-row { display: flex; gap: 12px; justify-content: space-between; align-items: center; }
+    .top-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 1rem;
+    }
 
-    .message { padding: 12px; border-radius: 10px; font-size: .85rem; }
-    .message.success { background: var(--olive-soft); color: var(--olive); border: 1px solid rgba(94,105,84,0.2); }
-    .message.error { background: var(--danger-soft); color: var(--danger); border: 1px solid rgba(140,93,88,0.2); }
-    .tag-picker { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.58); }
-    .tag-selected, .tag-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag-placeholder, .tag-help { font-size: .78rem; color: var(--muted); }
-    .tag-input-row { display: flex; gap: 8px; }
-    .tag-input-row input { flex: 1; }
-    .tag-chip, .tag-suggestion {
-      display: inline-flex; align-items: center; gap: 6px; border-radius: 999px;
-      border: 1px solid var(--border); background: rgba(255,255,255,0.88);
-      padding: 6px 10px; font-size: .78rem; line-height: 1; color: var(--text);
-    }
-    .tag-chip button, .tag-suggestion {
-      font: inherit; cursor: pointer;
-    }
-    .tag-chip button {
-      border: none; background: none; color: var(--muted); padding: 0; line-height: 1;
-    }
-    .tag-chip button:hover { color: var(--accent-deep); }
-    .tag-suggestion {
-      background: var(--accent-soft);
-      border-color: rgba(122,92,62,0.22);
-    }
-    .tag-suggestion:hover {
-      background: rgba(122,92,62,0.18);
-      border-color: var(--border-strong);
-    }
-    .tag-add-btn {
+    .top-link:hover { color: var(--accent-deep); }
+
+    .loading,
+    .error-state {
       border: 1px solid var(--border);
-      border-radius: 10px;
-      background: rgba(255,255,255,0.85);
-      color: var(--accent-deep);
-      font: inherit;
-      font-size: .82rem;
+      border-radius: var(--radius-xl);
+      background: var(--surface);
+      box-shadow: var(--shadow-soft);
+      padding: 56px 32px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .editor {
+      display: grid;
+      gap: 24px;
+    }
+
+    .hidden { display: none !important; }
+
+    .hero-card,
+    .panel,
+    .sticky-bar {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--shadow-card);
+      backdrop-filter: blur(16px);
+    }
+
+    .hero-card {
+      display: grid;
+      grid-template-columns: 168px minmax(0, 1fr);
+      gap: 24px;
+      padding: 24px;
+      border-radius: 30px;
+      box-shadow: var(--shadow-soft);
+      align-items: center;
+    }
+
+    .hero-cover {
+      position: relative;
+      width: 168px;
+      height: 244px;
+      border-radius: 22px;
+      overflow: hidden;
+      background:
+        linear-gradient(155deg, rgba(118, 82, 62, 0.9), rgba(155, 114, 88, 0.72)),
+        radial-gradient(circle at top, rgba(255,255,255,0.2), transparent 46%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 16px 36px rgba(66, 43, 27, 0.18);
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+    }
+
+    .hero-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .hero-cover.is-fallback::after {
+      content: attr(data-fallback);
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+      padding: 18px;
+      color: rgba(255, 247, 240, 0.96);
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 2.35rem;
       font-weight: 600;
-      padding: 0 14px;
+      line-height: 0.95;
+      white-space: pre-line;
+    }
+
+    .hero-copy {
+      min-width: 0;
+      display: grid;
+      gap: 14px;
+    }
+
+    .eyebrow {
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--accent-deep);
+    }
+
+    .hero-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(2.5rem, 4vw, 3.6rem);
+      line-height: 0.95;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .hero-author {
+      color: var(--muted);
+      font-size: 1.25rem;
+    }
+
+    .hero-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .meta-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 8px 14px;
+      background: rgba(255,255,255,0.78);
+      border: 1px solid rgba(121, 94, 72, 0.13);
+      color: var(--text);
+      font-size: 0.95rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    .meta-pill.stars {
+      gap: 4px;
+      color: var(--star-on);
+      letter-spacing: 0.02em;
+    }
+
+    .meta-pill.stars .off { color: var(--star-off); }
+
+    .hero-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 2px;
+    }
+
+    .hero-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.98rem;
+      color: var(--accent-deep);
+    }
+
+    .panel {
+      border-radius: var(--radius-xl);
+      padding: 24px;
+    }
+
+    .meta-panel {
+      padding: 18px;
+    }
+
+    .section-heading {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+
+    .section-heading h2,
+    .details-summary-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(1.85rem, 3vw, 2.45rem);
+      font-weight: 600;
+      line-height: 0.98;
+      letter-spacing: -0.02em;
+    }
+
+    .section-heading p,
+    .details-summary-copy,
+    .panel-copy {
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .meta-panel .section-heading {
+      gap: 4px;
+      margin-bottom: 14px;
+    }
+
+    .meta-panel .section-heading h2,
+    .meta-panel .details-summary-title {
+      font-size: clamp(1.65rem, 2.4vw, 2rem);
+      line-height: 1.02;
+    }
+
+    .meta-panel .section-heading p,
+    .meta-panel .details-summary-copy,
+    .meta-panel .panel-copy,
+    .meta-panel .field-help,
+    .meta-panel .tag-help,
+    .meta-panel .tag-placeholder,
+    .meta-panel .tag-empty {
+      font-size: 0.92rem;
+    }
+
+    .review-panel {
+      background:
+        linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(250, 244, 236, 0.92)),
+        var(--surface);
+    }
+
+    .review-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+
+    .review-stats {
+      font-size: 0.95rem;
+      color: var(--muted);
+      white-space: nowrap;
+      padding-top: 6px;
+    }
+
+    .markdown-helper {
+      margin-top: 6px;
+      font-size: 0.98rem;
+      color: var(--muted);
+    }
+
+    .mode-toggle {
+      display: inline-flex;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 6px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+
+    .mode-toggle button {
+      border: none;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+    }
+
+    .mode-toggle button.active {
+      background: rgba(255,255,255,0.96);
+      color: var(--accent-deep);
+      box-shadow: 0 8px 18px rgba(121, 94, 72, 0.08);
+    }
+
+    .mode-toggle button:hover { color: var(--accent-deep); }
+
+    .review-body {
+      position: relative;
+      min-height: 360px;
+    }
+
+    .review-editor,
+    .review-preview {
+      width: 100%;
+      min-height: 360px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.86);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+    }
+
+    .review-editor {
+      resize: vertical;
+      padding: 20px 22px;
+      font-size: 1.04rem;
+      line-height: 1.72;
+      color: var(--text);
+      outline: none;
+    }
+
+    .review-preview {
+      padding: 24px 24px 18px;
+      overflow-wrap: anywhere;
+    }
+
+    .field-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .field-grid.two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .field-grid.three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .meta-panel .field-grid {
+      gap: 12px;
+    }
+
+    .meta-panel .field-grid-spaced {
+      margin-top: 12px;
+    }
+
+    .field-card {
+      display: grid;
+      gap: 8px;
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.74);
+      transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    .meta-panel .field-card {
+      gap: 6px;
+      padding: 12px 12px 10px;
+      border-radius: 15px;
+    }
+
+    .field-card.priority {
+      background: linear-gradient(180deg, rgba(242, 223, 206, 0.45), rgba(255,255,255,0.8));
+      border-color: rgba(155, 114, 88, 0.28);
+      box-shadow: 0 10px 22px rgba(155, 114, 88, 0.08);
+    }
+
+    .field-label {
+      font-size: 0.84rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+    }
+
+    .field-help {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid rgba(121, 94, 72, 0.14);
+      background: rgba(255,255,255,0.92);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 13px 14px;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    .meta-panel input,
+    .meta-panel select,
+    .meta-panel textarea {
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 0.97rem;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      outline: none;
+      border-color: rgba(155, 114, 88, 0.42);
+      box-shadow: 0 0 0 4px var(--accent-glow);
+    }
+
+    .priority-note {
+      margin-top: 12px;
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: rgba(242, 223, 206, 0.55);
+      border: 1px solid rgba(155, 114, 88, 0.22);
+      color: var(--accent-deep);
+      font-size: 0.98rem;
+    }
+
+    .meta-panel .priority-note {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: 0.92rem;
+    }
+
+    .tag-shell {
+      margin-top: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .meta-panel .tag-shell {
+      margin-top: 12px;
+      gap: 10px;
+    }
+
+    .tag-toolbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .meta-panel .tag-toolbar {
+      gap: 10px;
+    }
+
+    .tag-selected,
+    .tag-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .meta-panel .tag-selected,
+    .meta-panel .tag-suggestions {
+      gap: 8px;
+    }
+
+    .tag-placeholder,
+    .tag-empty,
+    .tag-help {
+      font-size: 0.97rem;
+      color: var(--muted);
+    }
+
+    .tag-chip,
+    .tag-suggestion {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(121, 94, 72, 0.14);
+      background: rgba(255,255,255,0.92);
+      padding: 8px 13px;
+      font-size: 0.96rem;
+      line-height: 1;
+      color: var(--text);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+    }
+
+    .meta-panel .tag-chip,
+    .meta-panel .tag-suggestion {
+      gap: 6px;
+      padding: 7px 11px;
+      font-size: 0.9rem;
+    }
+
+    .tag-chip button,
+    .tag-suggestion {
+      font: inherit;
       cursor: pointer;
     }
-    .tag-add-btn:hover { background: var(--accent-soft); }
-    .hidden { display: none; }
-    .loading { text-align: center; padding: 48px; color: var(--muted); }
+
+    .tag-chip button {
+      border: none;
+      background: none;
+      color: var(--muted);
+      padding: 0;
+      line-height: 1;
+    }
+
+    .tag-chip button:hover { color: var(--accent-deep); }
+
+    .tag-suggestion {
+      background: var(--accent-soft);
+      border-color: rgba(155, 114, 88, 0.24);
+      transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+    }
+
+    .tag-suggestion:hover {
+      transform: translateY(-1px);
+      background: rgba(155, 114, 88, 0.18);
+      border-color: var(--border-strong);
+    }
+
+    .tag-manager {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: rgba(248, 242, 234, 0.8);
+    }
+
+    .meta-panel .tag-manager {
+      gap: 10px;
+      padding: 12px;
+      border-radius: 16px;
+    }
+
+    .tag-input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .tag-input-row input { flex: 1; }
+
+    .meta-panel .tag-input-row {
+      gap: 8px;
+    }
+
+    .btn,
+    .ghost-btn,
+    .text-btn {
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+    }
+
+    .btn {
+      border: none;
+      font-weight: 700;
+      padding: 13px 22px;
+      font-size: 1rem;
+    }
+
+    .btn:hover,
+    .ghost-btn:hover,
+    .text-btn:hover { transform: translateY(-1px); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-deep), var(--accent));
+      color: #fffaf5;
+      box-shadow: 0 12px 26px rgba(118, 82, 62, 0.22);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.9);
+      color: var(--accent-deep);
+      border: 1px solid rgba(121, 94, 72, 0.14);
+    }
+
+    .btn-danger {
+      background: var(--danger-soft);
+      color: var(--danger);
+      border: 1px solid rgba(156, 107, 103, 0.22);
+    }
+
+    .ghost-btn {
+      border: 1px solid rgba(121, 94, 72, 0.14);
+      background: rgba(255,255,255,0.82);
+      color: var(--accent-deep);
+      padding: 10px 16px;
+      font-size: 0.96rem;
+      font-weight: 700;
+    }
+
+    .ghost-btn.small {
+      padding: 8px 14px;
+      font-size: 0.92rem;
+    }
+
+    .meta-panel .ghost-btn.small {
+      padding: 7px 12px;
+      font-size: 0.88rem;
+    }
+
+    .text-btn {
+      border: none;
+      background: transparent;
+      color: var(--accent-deep);
+      padding: 4px 0;
+      font-weight: 700;
+      font-size: 0.97rem;
+      text-align: left;
+    }
+
+    .tag-cloud-wrap {
+      display: grid;
+      gap: 10px;
+    }
+
+    details {
+      overflow: hidden;
+    }
+
+    details summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    details summary::-webkit-details-marker { display: none; }
+
+    .details-summary-copy {
+      margin-top: 6px;
+    }
+
+    .details-summary-toggle {
+      border-radius: 999px;
+      border: 1px solid rgba(121, 94, 72, 0.14);
+      background: rgba(255,255,255,0.9);
+      padding: 8px 14px;
+      color: var(--accent-deep);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .details-grid {
+      display: grid;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .meta-panel .details-grid {
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .meta-panel summary {
+      gap: 12px;
+    }
+
+    .meta-panel .details-summary-toggle {
+      padding: 7px 12px;
+      font-size: 0.9rem;
+    }
+
+    .message {
+      border-radius: 18px;
+      padding: 14px 16px;
+      font-size: 0.98rem;
+      border: 1px solid transparent;
+    }
+
+    .message.success {
+      background: var(--olive-soft);
+      color: var(--olive-strong);
+      border-color: rgba(104, 115, 93, 0.18);
+    }
+
+    .message.error {
+      background: var(--danger-soft);
+      color: var(--danger);
+      border-color: rgba(156, 107, 103, 0.18);
+    }
+
+    .danger-panel {
+      padding: 16px 18px;
+      background:
+        linear-gradient(180deg, rgba(255, 251, 249, 0.95), rgba(251, 240, 239, 0.92)),
+        var(--surface);
+    }
+
+    .danger-panel .section-heading {
+      gap: 3px;
+      margin-bottom: 10px;
+    }
+
+    .danger-panel .section-heading h2 {
+      font-size: clamp(1.4rem, 2vw, 1.7rem);
+      line-height: 1.03;
+    }
+
+    .danger-panel .section-heading p,
+    .danger-panel .panel-copy {
+      font-size: 0.9rem;
+    }
+
+    .danger-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .danger-panel .btn-danger {
+      padding: 10px 18px;
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+
+    .sticky-bar {
+      position: sticky;
+      bottom: 16px;
+      z-index: 20;
+      padding: 16px 18px;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 20px 40px rgba(56, 36, 23, 0.14);
+    }
+
+    .sticky-copy {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .sticky-status {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent-deep);
+    }
+
+    .sticky-hint {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .sticky-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .review-preview p { margin: 0 0 0.45em 0; }
+    .review-preview p:last-child { margin-bottom: 0; }
+    .review-preview blockquote {
+      margin: 0.2em 0 0.55em;
+      padding-left: 1em;
+      border-left: 3px solid rgba(121, 94, 72, 0.2);
+      color: #5c5148;
+    }
+    .review-preview ul,
+    .review-preview ol { margin: 0.18em 0 0.55em; padding-left: 1.3em; }
+    .review-preview li { margin-bottom: 0.15em; }
+    .review-preview code {
+      background: rgba(121, 94, 72, 0.09);
+      border-radius: 5px;
+      padding: 0.15em 0.35em;
+      font-size: 0.92em;
+    }
+    .review-preview pre {
+      background: rgba(121, 94, 72, 0.07);
+      padding: 0.75em 0.85em;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin: 0.4em 0 0.7em;
+    }
+    .review-preview pre code {
+      background: none;
+      padding: 0;
+    }
+    .review-preview a {
+      color: rgba(118, 82, 62, 0.94);
+      text-decoration: underline;
+    }
+    .review-preview h1,
+    .review-preview h2,
+    .review-preview h3 {
+      font-family: 'Cormorant Garamond', serif;
+      margin: 0.45em 0 0.18em;
+      line-height: 1.04;
+      letter-spacing: -0.01em;
+    }
+    .review-preview h1 { font-size: 1.6rem; }
+    .review-preview h2 { font-size: 1.42rem; }
+    .review-preview h3 { font-size: 1.24rem; }
+    .review-preview hr {
+      border: none;
+      border-top: 1px solid rgba(121, 94, 72, 0.18);
+      margin: 0.9em 0;
+    }
+    .review-preview strong { font-weight: 700; }
+    .review-preview em { font-style: italic; }
+
+    @media (max-width: 840px) {
+      body { padding: 24px 16px 90px; }
+      .hero-card {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      .hero-cover {
+        width: 152px;
+        height: 220px;
+      }
+      .field-grid.two-col,
+      .field-grid.three-col {
+        grid-template-columns: 1fr;
+      }
+      .danger-row,
+      .sticky-bar,
+      .review-head,
+      .tag-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .sticky-actions { width: 100%; }
+      .sticky-actions > * { flex: 1; text-align: center; justify-content: center; display: inline-flex; }
+    }
+
+    @media (max-width: 560px) {
+      body { font-size: 16px; }
+      .panel,
+      .hero-card { padding: 20px; }
+      .hero-title { font-size: 2.35rem; }
+      .tag-input-row {
+        flex-direction: column;
+      }
+      .mode-toggle {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .mode-toggle button { flex: 1; }
+    }
   </style>
 </head>
 <body>
-<div class="container">
-  <a class="back" href="index.html">&larr; Back to bookshelf</a>
-  <a class="back" id="book-page-link" style="display:none;margin-left:12px">&rarr; View this book's page (with notes)</a>
-  <h1>Edit Book</h1>
+  <div class="page-shell">
+    <a class="top-link" href="index.html">&larr; Back to bookshelf</a>
 
-  <div class="loading" id="loading">Loading book…</div>
+    <div class="loading" id="loading">Loading editor…</div>
+    <div class="error-state hidden" id="error-state"></div>
 
-  <form id="edit-form" class="hidden">
-    <div class="form-row">
-      <div class="form-group">
-        <label for="title">Title *</label>
-        <input type="text" id="title" name="title" required>
-      </div>
-      <div class="form-group">
-        <label for="author">Author *</label>
-        <input type="text" id="author" name="author" required>
-      </div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label for="exclusive_shelf">Shelf</label>
-        <select id="exclusive_shelf" name="exclusive_shelf">
-          <option value="to_read">Want to Read</option>
-          <option value="currently_reading">Currently Reading</option>
-          <option value="read">Read</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="my_rating">My Rating</label>
-        <select id="my_rating" name="my_rating">
-          <option value="0">No rating</option>
-          <option value="1">1 star</option>
-          <option value="2">2 stars</option>
-          <option value="3">3 stars</option>
-          <option value="4">4 stars</option>
-          <option value="5">5 stars</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label for="tag-input">Tags</label>
-      <div class="tag-picker">
-        <div class="tag-selected" id="selected-tags">
-          <span class="tag-placeholder">No custom tags yet.</span>
+    <form id="edit-form" class="editor hidden">
+      <section class="hero-card" aria-label="Book context">
+        <div class="hero-cover is-fallback" id="hero-cover" data-fallback="Book&#10;editor"></div>
+        <div class="hero-copy">
+          <p class="eyebrow">Private editor</p>
+          <div>
+            <h1 class="hero-title" id="hero-title">Edit Book</h1>
+            <p class="hero-author" id="hero-author"></p>
+          </div>
+          <div class="hero-summary" id="hero-summary"></div>
+          <div class="hero-links">
+            <a class="hero-link" href="index.html">&larr; Back to shelf</a>
+            <a class="hero-link" id="book-page-link" href="#">View public book page &rarr;</a>
+          </div>
         </div>
-        <div class="tag-input-row">
-          <input type="text" id="tag-input" list="tag-options" placeholder="Type a tag and press Enter">
-          <button type="button" class="tag-add-btn" id="add-tag-btn">Add</button>
+      </section>
+
+      <section class="panel review-panel">
+        <div class="review-head">
+          <div class="section-heading" style="margin-bottom:0">
+            <p class="eyebrow">Review</p>
+            <h2>Write the public-facing reflection here.</h2>
+            <p>Markdown is supported, and the preview uses the same rendering path as the book page.</p>
+          </div>
+          <div class="review-stats" id="review-stats">0 words</div>
         </div>
-        <datalist id="tag-options"></datalist>
-        <div class="tag-help">Pick from existing tags below or create a new one. Shelf tags are added automatically.</div>
-        <div class="tag-suggestions" id="tag-suggestions"></div>
+
+        <p class="markdown-helper">Try headings, lists, blockquotes, links, or fenced code blocks if you want a more structured review.</p>
+
+        <div class="mode-toggle" role="tablist" aria-label="Review editor mode">
+          <button type="button" id="write-mode-btn" class="active" aria-selected="true">Write</button>
+          <button type="button" id="preview-mode-btn" aria-selected="false">Preview</button>
+        </div>
+
+        <div class="review-body">
+          <textarea
+            id="my_review"
+            name="my_review"
+            class="review-editor"
+            placeholder="What stayed with you? What changed your mind? What would you tell a friend about this book?"
+          ></textarea>
+          <div id="review-preview" class="review-preview hidden" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="panel meta-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Organization</p>
+          <h2>Keep the record accurate while you write.</h2>
+          <p>These fields shape how the book appears across the shelf, hovercards, and public page.</p>
+        </div>
+
+        <div class="field-grid two-col">
+          <label class="field-card">
+            <span class="field-label">Title *</span>
+            <input type="text" id="title" name="title" required>
+          </label>
+          <label class="field-card">
+            <span class="field-label">Author *</span>
+            <input type="text" id="author" name="author" required>
+          </label>
+        </div>
+
+        <div class="field-grid three-col field-grid-spaced">
+          <label class="field-card">
+            <span class="field-label">Shelf</span>
+            <select id="exclusive_shelf" name="exclusive_shelf">
+              <option value="to_read">Want to Read</option>
+              <option value="currently_reading">Currently Reading</option>
+              <option value="read">Read</option>
+            </select>
+          </label>
+          <label class="field-card" id="rating-card">
+            <span class="field-label">My Rating</span>
+            <select id="my_rating" name="my_rating">
+              <option value="0">No rating</option>
+              <option value="1">1 star</option>
+              <option value="2">2 stars</option>
+              <option value="3">3 stars</option>
+              <option value="4">4 stars</option>
+              <option value="5">5 stars</option>
+            </select>
+          </label>
+          <label class="field-card" id="date-read-card">
+            <span class="field-label">Date Read</span>
+            <input type="date" id="date_read" name="date_read">
+          </label>
+        </div>
+
+        <div class="priority-note hidden" id="read-priority-note">
+          Because this book is on <strong>Read</strong>, rating and finished date are highlighted as the most visible metadata on the public side.
+        </div>
+
+        <div class="tag-shell">
+          <div class="tag-toolbar">
+            <div>
+              <p class="field-label">Tags</p>
+              <p class="field-help">Custom tags stay visible here. Shelf tags are added automatically when you save.</p>
+            </div>
+            <button
+              type="button"
+              class="ghost-btn small"
+              id="toggle-tags-btn"
+              aria-expanded="false"
+              aria-controls="tag-manager"
+            >Manage tags</button>
+          </div>
+
+          <div class="tag-selected" id="selected-tags">
+            <span class="tag-placeholder">No custom tags yet.</span>
+          </div>
+
+          <div class="tag-manager hidden" id="tag-manager">
+            <div class="tag-input-row">
+              <input type="text" id="tag-input" placeholder="Search existing tags or add a new one">
+              <button type="button" class="btn btn-secondary" id="add-tag-btn">Add tag</button>
+            </div>
+            <p class="tag-help" id="tag-help">Loading suggestions only when you need them keeps the editor focused.</p>
+            <div class="tag-suggestions" id="tag-suggestions"></div>
+            <div class="tag-cloud-wrap">
+              <button type="button" class="text-btn hidden" id="toggle-all-tags-btn">Browse full tag cloud</button>
+              <div class="tag-suggestions hidden" id="all-tag-suggestions"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <details class="panel meta-panel" id="details-panel">
+        <summary>
+          <div>
+            <div class="details-summary-title">Details</div>
+            <div class="details-summary-copy">ISBN, pages, date added, and the cover URL live here so they stop competing with writing.</div>
+          </div>
+          <span class="details-summary-toggle" id="details-toggle-label">Show details</span>
+        </summary>
+
+        <div class="details-grid">
+          <div class="field-grid two-col">
+            <label class="field-card">
+              <span class="field-label">ISBN-13</span>
+              <input type="text" id="isbn13" name="isbn13" inputmode="numeric">
+            </label>
+            <label class="field-card">
+              <span class="field-label">Pages</span>
+              <input type="number" id="pages" name="pages" min="1">
+            </label>
+          </div>
+
+          <div class="field-grid two-col">
+            <label class="field-card">
+              <span class="field-label">Date Added</span>
+              <input type="date" id="date_added" name="date_added" required>
+            </label>
+            <label class="field-card">
+              <span class="field-label">Cover URL</span>
+              <input type="url" id="cover_url" name="cover_url" placeholder="https://...">
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <section class="panel meta-panel danger-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Danger zone</p>
+          <h2>Delete this book.</h2>
+          <p>Remove the book record from the shelf. This action cannot be undone.</p>
+        </div>
+
+        <div class="danger-row">
+          <p class="panel-copy" id="danger-copy">Delete this entry only if you want it gone permanently.</p>
+          <button type="button" class="btn btn-danger" id="delete-btn">Delete book</button>
+        </div>
+      </section>
+
+      <input type="hidden" id="google_books_id" name="google_books_id">
+
+      <div id="message" class="message hidden" aria-live="polite"></div>
+
+      <div class="sticky-bar">
+        <div class="sticky-copy">
+          <div class="sticky-status" id="save-status">All changes saved</div>
+          <div class="sticky-hint" id="save-hint">This editor stays open after save so you can keep refining the record.</div>
+        </div>
+        <div class="sticky-actions">
+          <a class="btn btn-secondary" id="sticky-book-link" href="#">View book page</a>
+          <button type="submit" class="btn btn-primary" id="save-btn">Save changes</button>
+        </div>
       </div>
-    </div>
+    </form>
+  </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label for="isbn13">ISBN-13</label>
-        <input type="text" id="isbn13" name="isbn13">
-      </div>
-      <div class="form-group">
-        <label for="pages">Pages</label>
-        <input type="number" id="pages" name="pages">
-      </div>
-    </div>
+  <script>
+    const AUTH_KEY = 'bookshelf_auth_token';
+    const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const localApiPort = location.port === '8010' ? '8011' : '8001';
+    const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
+    const RESERVED_SHELF_TAGS = new Set(['read', 'currently-reading', 'to-read']);
+    const SHELF_LABELS = {
+      to_read: 'Want to Read',
+      currently_reading: 'Currently Reading',
+      read: 'Read',
+    };
+    const tagState = {
+      selected: [],
+      suggestions: [],
+      loaded: false,
+      loading: false,
+      error: '',
+      showAll: false,
+      open: false,
+    };
+    const uiState = {
+      dirty: false,
+      saving: false,
+      reviewMode: 'write',
+      initialSnapshot: '',
+    };
 
-    <div class="form-row">
-      <div class="form-group">
-        <label for="date_read">Date Read</label>
-        <input type="date" id="date_read" name="date_read">
-      </div>
-      <div class="form-group">
-        <label for="date_added">Date Added</label>
-        <input type="date" id="date_added" name="date_added">
-      </div>
-    </div>
+    const params = new URLSearchParams(location.search);
+    const bookId = params.get('id');
+    let currentBook = null;
+    let markedConfigured = false;
 
-    <div class="form-group">
-      <label for="cover_url">Cover URL</label>
-      <input type="url" id="cover_url" name="cover_url" placeholder="https://...">
-    </div>
-
-    <div class="form-group">
-      <label for="my_review">Review</label>
-      <textarea id="my_review" name="my_review" placeholder="Your review…"></textarea>
-    </div>
-
-    <input type="hidden" id="google_books_id" name="google_books_id">
-
-    <div id="message" class="message hidden"></div>
-
-    <div class="btn-row">
-      <button type="button" class="btn btn-danger" id="delete-btn">Delete</button>
-      <button type="submit" class="btn btn-primary" id="save-btn">Save Changes</button>
-    </div>
-  </form>
-</div>
-
-<script>
-const AUTH_KEY = 'bookshelf_auth_token';
-const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-const localApiPort = location.port === '8010' ? '8011' : '8001';
-const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
-const RESERVED_SHELF_TAGS = new Set(['read', 'currently-reading', 'to-read']);
-const tagState = { selected: [], suggestions: [] };
-
-const params = new URLSearchParams(location.search);
-const bookId = params.get('id');
-
-function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
-function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function normalizeShelfTag(value) {
-  if (value === 'to_read') return 'to-read';
-  if (value === 'currently_reading') return 'currently-reading';
-  return value;
-}
-function normalizeTag(value) {
-  const trimmed = String(value || '').trim().replace(/\s+/g, ' ');
-  if (!trimmed) return '';
-  return normalizeShelfTag(trimmed);
-}
-function tagKey(value) { return normalizeTag(value).toLocaleLowerCase(); }
-function isReservedShelfTag(value) { return RESERVED_SHELF_TAGS.has(normalizeTag(value)); }
-function dedupeTags(tags, excludeReserved = false) {
-  const seen = new Set();
-  const normalized = [];
-  tags.forEach(raw => {
-    const tag = normalizeTag(raw);
-    if (!tag) return;
-    if (excludeReserved && isReservedShelfTag(tag)) return;
-    const key = tagKey(tag);
-    if (seen.has(key)) return;
-    seen.add(key);
-    normalized.push(tag);
-  });
-  return normalized;
-}
-function buildSubmittedShelves(exclusiveShelf) {
-  return dedupeTags([normalizeShelfTag(exclusiveShelf), ...tagState.selected]);
-}
-function renderTagOptions() {
-  document.getElementById('tag-options').innerHTML = tagState.suggestions
-    .map(tag => `<option value="${escHtml(tag)}"></option>`)
-    .join('');
-}
-function renderSelectedTags() {
-  const el = document.getElementById('selected-tags');
-  if (!tagState.selected.length) {
-    el.innerHTML = '<span class="tag-placeholder">No custom tags yet.</span>';
-    return;
-  }
-  el.innerHTML = tagState.selected.map(tag => `
-    <span class="tag-chip">
-      <span>${escHtml(tag)}</span>
-      <button type="button" data-remove-tag="${escHtml(tag)}" aria-label="Remove ${escHtml(tag)}">&times;</button>
-    </span>
-  `).join('');
-}
-function renderTagSuggestions() {
-  const selected = new Set(tagState.selected.map(tagKey));
-  const suggestions = tagState.suggestions.filter(tag => !selected.has(tagKey(tag))).slice(0, 40);
-  document.getElementById('tag-suggestions').innerHTML = suggestions.map(tag => `
-    <button type="button" class="tag-suggestion" data-add-tag="${escHtml(tag)}">${escHtml(tag)}</button>
-  `).join('');
-}
-function setSelectedTags(tags) {
-  tagState.selected = dedupeTags(tags, true);
-  renderSelectedTags();
-  renderTagSuggestions();
-}
-function addTag(rawTag) {
-  const tag = normalizeTag(rawTag);
-  if (!tag || isReservedShelfTag(tag)) return false;
-  tagState.selected = dedupeTags([...tagState.selected, tag], true);
-  renderSelectedTags();
-  renderTagSuggestions();
-  return true;
-}
-function removeTag(rawTag) {
-  const key = tagKey(rawTag);
-  tagState.selected = tagState.selected.filter(tag => tagKey(tag) !== key);
-  renderSelectedTags();
-  renderTagSuggestions();
-}
-function extractTagSuggestions(books) {
-  const counts = new Map();
-  books.forEach(book => (book.shelves || []).forEach(rawTag => {
-    const tag = normalizeTag(rawTag);
-    if (!tag || isReservedShelfTag(tag)) return;
-    const key = tagKey(tag);
-    const entry = counts.get(key) || { tag, count: 0 };
-    entry.count += 1;
-    counts.set(key, entry);
-  }));
-  return Array.from(counts.values())
-    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
-    .map(entry => entry.tag);
-}
-
-function showMessage(text, type) {
-  const el = document.getElementById('message');
-  el.textContent = text;
-  el.className = `message ${type}`;
-  el.classList.remove('hidden');
-}
-
-function populateForm(book) {
-  document.getElementById('title').value = book.title || '';
-  document.getElementById('author').value = book.author || '';
-  document.getElementById('exclusive_shelf').value = book.exclusive_shelf || 'to_read';
-  document.getElementById('my_rating').value = String(book.my_rating || 0);
-  document.getElementById('isbn13').value = book.isbn13 || '';
-  document.getElementById('pages').value = book.pages || '';
-  document.getElementById('date_read').value = book.date_read || '';
-  document.getElementById('date_added').value = book.date_added || '';
-  document.getElementById('cover_url').value = book.cover_url || '';
-  document.getElementById('my_review').value = book.my_review || '';
-  document.getElementById('google_books_id').value = book.google_books_id || '';
-  setSelectedTags(book.shelves || []);
-}
-
-async function loadBook() {
-  if (!bookId) {
-    document.getElementById('loading').textContent = 'No book ID specified.';
-    return;
-  }
-  try {
-    const resp = await fetch(`${apiBase}/api/books`);
-    const data = await resp.json();
-    const allBooks = [
-      ...(data.books.read || []),
-      ...(data.books.currently_reading || []),
-      ...(data.books.to_read || []),
-    ];
-    tagState.suggestions = extractTagSuggestions(allBooks);
-    renderTagOptions();
-    const book = allBooks.find(b => String(b.id) === bookId);
-    if (!book) {
-      document.getElementById('loading').textContent = 'Book not found.';
-      return;
+    function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
+    function escHtml(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+    function escAttr(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
     }
-    populateForm(book);
-    document.getElementById('loading').classList.add('hidden');
-    document.getElementById('edit-form').classList.remove('hidden');
-    const bookPageLink = document.getElementById('book-page-link');
-    bookPageLink.href = `book.html?id=${bookId}`;
-    bookPageLink.style.display = '';
-  } catch (err) {
-    document.getElementById('loading').textContent = `Failed to load: ${err.message}`;
-  }
-}
 
-// Save
-document.getElementById('edit-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const token = getToken();
-  if (!token) return showMessage('Not logged in. Go back and log in first.', 'error');
-
-  const btn = document.getElementById('save-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-
-  const body = {
-    title: document.getElementById('title').value.trim(),
-    author: document.getElementById('author').value.trim(),
-    exclusive_shelf: document.getElementById('exclusive_shelf').value,
-    my_rating: parseInt(document.getElementById('my_rating').value) || 0,
-    shelves: buildSubmittedShelves(document.getElementById('exclusive_shelf').value),
-  };
-
-  const isbn13 = document.getElementById('isbn13').value.trim();
-  const pages = document.getElementById('pages').value.trim();
-  const date_read = document.getElementById('date_read').value;
-  const date_added = document.getElementById('date_added').value;
-  const cover_url = document.getElementById('cover_url').value.trim();
-  const my_review = document.getElementById('my_review').value.trim();
-  const google_books_id = document.getElementById('google_books_id').value.trim();
-
-  if (isbn13) body.isbn13 = isbn13;
-  if (pages) body.pages = parseInt(pages);
-  if (date_read) body.date_read = date_read;
-  if (date_added) body.date_added = date_added;
-  if (cover_url) body.cover_url = cover_url;
-  if (my_review) body.my_review = my_review;
-  if (google_books_id) body.google_books_id = google_books_id;
-
-  try {
-    const resp = await fetch(`${apiBase}/api/books/${bookId}`, {
-      method: 'PUT',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || 'Failed to save');
-    showMessage('Saved!', 'success');
-    btn.textContent = 'Saved!';
-    setTimeout(() => { window.location.href = 'index.html'; }, 1200);
-  } catch (err) {
-    showMessage(err.message, 'error');
-    btn.disabled = false;
-    btn.textContent = 'Save Changes';
-  }
-});
-
-document.getElementById('add-tag-btn').addEventListener('click', () => {
-  const input = document.getElementById('tag-input');
-  if (addTag(input.value)) input.value = '';
-  input.focus();
-});
-
-document.getElementById('tag-input').addEventListener('keydown', e => {
-  if (e.key !== 'Enter' && e.key !== ',') return;
-  e.preventDefault();
-  const input = document.getElementById('tag-input');
-  if (addTag(input.value)) input.value = '';
-});
-
-document.getElementById('selected-tags').addEventListener('click', e => {
-  const btn = e.target.closest('[data-remove-tag]');
-  if (!btn) return;
-  removeTag(btn.dataset.removeTag);
-});
-
-document.getElementById('tag-suggestions').addEventListener('click', e => {
-  const btn = e.target.closest('[data-add-tag]');
-  if (!btn) return;
-  addTag(btn.dataset.addTag);
-});
-
-setSelectedTags([]);
-
-// Delete
-document.getElementById('delete-btn').addEventListener('click', async () => {
-  if (!confirm('Delete this book? This cannot be undone.')) return;
-  const token = getToken();
-  if (!token) return showMessage('Not logged in.', 'error');
-
-  try {
-    const resp = await fetch(`${apiBase}/api/books/${bookId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (!resp.ok) {
-      const data = await resp.json();
-      throw new Error(data.detail || 'Failed to delete');
+    function configureMarked() {
+      if (markedConfigured || typeof marked === 'undefined') return;
+      marked.use({ breaks: true });
+      markedConfigured = true;
     }
-    showMessage('Deleted.', 'success');
-    setTimeout(() => { window.location.href = 'index.html'; }, 1000);
-  } catch (err) {
-    showMessage(err.message, 'error');
-  }
-});
 
-loadBook();
-</script>
+    function normalizeShelfTag(value) {
+      if (value === 'to_read') return 'to-read';
+      if (value === 'currently_reading') return 'currently-reading';
+      return value;
+    }
+
+    function normalizeTag(value) {
+      const trimmed = String(value || '').trim().replace(/\s+/g, ' ');
+      if (!trimmed) return '';
+      return normalizeShelfTag(trimmed);
+    }
+
+    function tagKey(value) { return normalizeTag(value).toLocaleLowerCase(); }
+    function isReservedShelfTag(value) { return RESERVED_SHELF_TAGS.has(normalizeTag(value)); }
+
+    function dedupeTags(tags, excludeReserved = false) {
+      const seen = new Set();
+      const normalized = [];
+      tags.forEach(raw => {
+        const tag = normalizeTag(raw);
+        if (!tag) return;
+        if (excludeReserved && isReservedShelfTag(tag)) return;
+        const key = tagKey(tag);
+        if (seen.has(key)) return;
+        seen.add(key);
+        normalized.push(tag);
+      });
+      return normalized;
+    }
+
+    function buildSubmittedShelves(exclusiveShelf) {
+      return dedupeTags([normalizeShelfTag(exclusiveShelf), ...tagState.selected]);
+    }
+
+    function extractTagSuggestions(books) {
+      const counts = new Map();
+      books.forEach(book => (book.shelves || []).forEach(rawTag => {
+        const tag = normalizeTag(rawTag);
+        if (!tag || isReservedShelfTag(tag)) return;
+        const key = tagKey(tag);
+        const entry = counts.get(key) || { tag, count: 0 };
+        entry.count += 1;
+        counts.set(key, entry);
+      }));
+      return Array.from(counts.values())
+        .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+        .map(entry => entry.tag);
+    }
+
+    function setMessage(text, type) {
+      const el = document.getElementById('message');
+      if (!text) {
+        el.textContent = '';
+        el.className = 'message hidden';
+        return;
+      }
+      el.textContent = text;
+      el.className = `message ${type}`;
+      el.classList.remove('hidden');
+    }
+
+    function showErrorState(message) {
+      document.getElementById('loading').classList.add('hidden');
+      const el = document.getElementById('error-state');
+      el.textContent = message;
+      el.classList.remove('hidden');
+    }
+
+    function ratingLabel(value) {
+      const rating = Number(value) || 0;
+      return rating ? `${rating} star${rating === 1 ? '' : 's'}` : 'No rating';
+    }
+
+    function starsHtml(value) {
+      const rating = Number(value) || 0;
+      let html = '';
+      for (let i = 1; i <= 5; i += 1) {
+        html += i <= rating ? '&#9733;' : '<span class="off">&#9733;</span>';
+      }
+      return html;
+    }
+
+    function formatDate(dateStr, options = { month: 'short', day: 'numeric', year: 'numeric' }) {
+      if (!dateStr) return '';
+      const d = new Date(`${dateStr}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('en-US', options);
+    }
+
+    function coverSrcFromState(state) {
+      if (state.cover_url) return state.cover_url;
+      if (state.isbn13) return `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(state.isbn13)}-L.jpg?default=false`;
+      return '';
+    }
+
+    function coverFallbackText(state) {
+      const title = String(state.title || currentBook?.title || 'Untitled').trim();
+      if (!title) return 'Book\neditor';
+      const words = title.split(/\s+/).slice(0, 2);
+      return words.join('\n');
+    }
+
+    function reviewWordCount(text) {
+      const words = String(text || '').trim().match(/\S+/g);
+      return words ? words.length : 0;
+    }
+
+    function getFormValues() {
+      return {
+        title: document.getElementById('title').value,
+        author: document.getElementById('author').value,
+        exclusive_shelf: document.getElementById('exclusive_shelf').value,
+        my_rating: document.getElementById('my_rating').value,
+        isbn13: document.getElementById('isbn13').value,
+        pages: document.getElementById('pages').value,
+        date_read: document.getElementById('date_read').value,
+        date_added: document.getElementById('date_added').value,
+        cover_url: document.getElementById('cover_url').value,
+        my_review: document.getElementById('my_review').value,
+        google_books_id: document.getElementById('google_books_id').value,
+      };
+    }
+
+    function serializeFormState() {
+      const values = getFormValues();
+      return JSON.stringify({
+        title: values.title.trim(),
+        author: values.author.trim(),
+        exclusive_shelf: values.exclusive_shelf,
+        my_rating: String(Number(values.my_rating) || 0),
+        tags: dedupeTags(tagState.selected, true),
+        isbn13: values.isbn13.trim(),
+        pages: values.pages.trim(),
+        date_read: values.date_read,
+        date_added: values.date_added,
+        cover_url: values.cover_url.trim(),
+        my_review: values.my_review,
+        google_books_id: values.google_books_id.trim(),
+      });
+    }
+
+    function updateStickyState() {
+      const status = document.getElementById('save-status');
+      const hint = document.getElementById('save-hint');
+      const saveBtn = document.getElementById('save-btn');
+
+      if (uiState.saving) {
+        status.textContent = 'Saving changes…';
+        hint.textContent = 'Updating the private editor and public book metadata.';
+        saveBtn.textContent = 'Saving…';
+        return;
+      }
+
+      saveBtn.textContent = uiState.dirty ? 'Save changes' : 'Saved';
+      if (uiState.dirty) {
+        status.textContent = 'Unsaved changes';
+        hint.textContent = 'Your edits are local to this page until you save them.';
+      } else {
+        status.textContent = 'All changes saved';
+        hint.textContent = 'This editor stays open after save so you can keep refining the record.';
+      }
+    }
+
+    function updateDirtyState() {
+      uiState.dirty = serializeFormState() !== uiState.initialSnapshot;
+      updateStickyState();
+    }
+
+    function renderHero() {
+      const values = document.getElementById('edit-form').classList.contains('hidden')
+        ? {
+            title: currentBook?.title || '',
+            author: currentBook?.author || '',
+            exclusive_shelf: currentBook?.exclusive_shelf || 'to_read',
+            my_rating: String(currentBook?.my_rating || 0),
+            isbn13: currentBook?.isbn13 || '',
+            pages: currentBook?.pages || '',
+            date_read: currentBook?.date_read || '',
+            cover_url: currentBook?.cover_url || '',
+          }
+        : getFormValues();
+
+      document.getElementById('hero-title').textContent = values.title.trim() || 'Untitled';
+      document.getElementById('hero-author').textContent = values.author.trim() || 'Unknown author';
+
+      const summaryParts = [
+        `<span class="meta-pill">${escHtml(SHELF_LABELS[values.exclusive_shelf] || 'Shelf')}</span>`,
+      ];
+
+      const rating = Number(values.my_rating) || 0;
+      summaryParts.push(
+        rating
+          ? `<span class="meta-pill stars" aria-label="${escAttr(ratingLabel(rating))}">${starsHtml(rating)}</span>`
+          : `<span class="meta-pill">${escHtml(ratingLabel(rating))}</span>`
+      );
+
+      if (values.date_read) summaryParts.push(`<span class="meta-pill">Finished ${escHtml(formatDate(values.date_read))}</span>`);
+      if (values.pages) summaryParts.push(`<span class="meta-pill">${escHtml(String(values.pages))} pages</span>`);
+      if (currentBook && typeof currentBook.note_count === 'number') {
+        summaryParts.push(`<span class="meta-pill">${currentBook.note_count} note${currentBook.note_count === 1 ? '' : 's'}</span>`);
+      }
+      document.getElementById('hero-summary').innerHTML = summaryParts.join('');
+
+      const cover = document.getElementById('hero-cover');
+      const src = coverSrcFromState(values);
+      const fallback = coverFallbackText(values);
+      cover.dataset.fallback = fallback;
+      if (!src) {
+        cover.classList.add('is-fallback');
+        cover.innerHTML = '';
+      } else {
+        cover.classList.remove('is-fallback');
+        cover.innerHTML = `<img src="${escAttr(src)}" alt="${escAttr(values.title || 'Book cover')}" loading="lazy">`;
+        const img = cover.querySelector('img');
+        img.addEventListener('error', () => {
+          cover.classList.add('is-fallback');
+          cover.innerHTML = '';
+        }, { once: true });
+      }
+
+      document.title = `${values.title.trim() || 'Edit Book'} — Xinyu's Bookshelf`;
+    }
+
+    function updateReviewStats() {
+      const text = document.getElementById('my_review').value;
+      const words = reviewWordCount(text);
+      const chars = text.length;
+      document.getElementById('review-stats').textContent = `${words} word${words === 1 ? '' : 's'} · ${chars} character${chars === 1 ? '' : 's'}`;
+    }
+
+    function renderReviewPreview() {
+      const preview = document.getElementById('review-preview');
+      const review = document.getElementById('my_review').value;
+      if (!review.trim()) {
+        preview.innerHTML = '<p class="tag-empty">Nothing written yet. Switch back to Write when you are ready.</p>';
+        return;
+      }
+      configureMarked();
+      if (typeof marked !== 'undefined') {
+        preview.innerHTML = marked.parse(review);
+      } else {
+        preview.textContent = review;
+      }
+    }
+
+    function setReviewMode(mode) {
+      uiState.reviewMode = mode;
+      const isPreview = mode === 'preview';
+      document.getElementById('write-mode-btn').classList.toggle('active', !isPreview);
+      document.getElementById('write-mode-btn').setAttribute('aria-selected', String(!isPreview));
+      document.getElementById('preview-mode-btn').classList.toggle('active', isPreview);
+      document.getElementById('preview-mode-btn').setAttribute('aria-selected', String(isPreview));
+      document.getElementById('my_review').classList.toggle('hidden', isPreview);
+      document.getElementById('review-preview').classList.toggle('hidden', !isPreview);
+      if (isPreview) renderReviewPreview();
+    }
+
+    function renderSelectedTags() {
+      const el = document.getElementById('selected-tags');
+      if (!tagState.selected.length) {
+        el.innerHTML = '<span class="tag-placeholder">No custom tags yet.</span>';
+        return;
+      }
+      el.innerHTML = tagState.selected.map(tag => `
+        <span class="tag-chip">
+          <span>${escHtml(tag)}</span>
+          <button type="button" data-remove-tag="${escAttr(tag)}" aria-label="Remove ${escAttr(tag)}">&times;</button>
+        </span>
+      `).join('');
+    }
+
+    function filteredSuggestions() {
+      const query = normalizeTag(document.getElementById('tag-input').value);
+      const selected = new Set(tagState.selected.map(tagKey));
+      return tagState.suggestions.filter(tag => {
+        if (selected.has(tagKey(tag))) return false;
+        if (!query) return true;
+        return tagKey(tag).includes(tagKey(query));
+      });
+    }
+
+    function renderTagSuggestions() {
+      const topEl = document.getElementById('tag-suggestions');
+      const allEl = document.getElementById('all-tag-suggestions');
+      const helpEl = document.getElementById('tag-help');
+      const toggleAllBtn = document.getElementById('toggle-all-tags-btn');
+
+      if (tagState.error) {
+        helpEl.textContent = tagState.error;
+        topEl.innerHTML = '';
+        allEl.innerHTML = '';
+        toggleAllBtn.classList.add('hidden');
+        allEl.classList.add('hidden');
+        return;
+      }
+
+      if (tagState.loading) {
+        helpEl.textContent = 'Loading tag suggestions from your existing bookshelf…';
+        topEl.innerHTML = '';
+        allEl.innerHTML = '';
+        toggleAllBtn.classList.add('hidden');
+        allEl.classList.add('hidden');
+        return;
+      }
+
+      if (!tagState.loaded) {
+        helpEl.textContent = 'Open tag tools to pull suggestions from the rest of the shelf.';
+        topEl.innerHTML = '';
+        allEl.innerHTML = '';
+        toggleAllBtn.classList.add('hidden');
+        allEl.classList.add('hidden');
+        return;
+      }
+
+      const suggestions = filteredSuggestions();
+      const topSuggestions = suggestions.slice(0, 10);
+      const restSuggestions = suggestions.slice(10);
+
+      helpEl.textContent = suggestions.length
+        ? 'Top suggestions come first. Expand the full tag cloud if you want to browse deeper.'
+        : 'No matching existing tags. Add a new one if this book wants a fresh label.';
+
+      topEl.innerHTML = topSuggestions.length
+        ? topSuggestions.map(tag => `<button type="button" class="tag-suggestion" data-add-tag="${escAttr(tag)}">${escHtml(tag)}</button>`).join('')
+        : '<span class="tag-empty">No tag suggestions match the current search.</span>';
+
+      if (!restSuggestions.length) {
+        toggleAllBtn.classList.add('hidden');
+        allEl.classList.add('hidden');
+        allEl.innerHTML = '';
+        return;
+      }
+
+      toggleAllBtn.classList.remove('hidden');
+      toggleAllBtn.textContent = tagState.showAll
+        ? 'Show fewer suggestions'
+        : `Browse full tag cloud (${suggestions.length})`;
+
+      allEl.innerHTML = restSuggestions.map(tag => `
+        <button type="button" class="tag-suggestion" data-add-tag="${escAttr(tag)}">${escHtml(tag)}</button>
+      `).join('');
+      allEl.classList.toggle('hidden', !tagState.showAll);
+    }
+
+    function setSelectedTags(tags) {
+      tagState.selected = dedupeTags(tags, true);
+      renderSelectedTags();
+      renderTagSuggestions();
+      updateDirtyState();
+    }
+
+    function addTag(rawTag) {
+      const tag = normalizeTag(rawTag);
+      if (!tag || isReservedShelfTag(tag)) return false;
+      tagState.selected = dedupeTags([...tagState.selected, tag], true);
+      document.getElementById('tag-input').value = '';
+      renderSelectedTags();
+      renderTagSuggestions();
+      updateDirtyState();
+      return true;
+    }
+
+    function removeTag(rawTag) {
+      const key = tagKey(rawTag);
+      tagState.selected = tagState.selected.filter(tag => tagKey(tag) !== key);
+      renderSelectedTags();
+      renderTagSuggestions();
+      updateDirtyState();
+    }
+
+    async function ensureTagSuggestionsLoaded() {
+      if (tagState.loaded || tagState.loading) return;
+      tagState.loading = true;
+      tagState.error = '';
+      renderTagSuggestions();
+      try {
+        const resp = await fetch(`${apiBase}/api/books`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Failed to load tag suggestions');
+        const allBooks = [
+          ...(data.books.read || []),
+          ...(data.books.currently_reading || []),
+          ...(data.books.to_read || []),
+        ];
+        tagState.suggestions = extractTagSuggestions(allBooks);
+        tagState.loaded = true;
+      } catch (err) {
+        tagState.error = `Could not load suggestions: ${err.message}`;
+      } finally {
+        tagState.loading = false;
+        renderTagSuggestions();
+      }
+    }
+
+    async function toggleTagManager() {
+      const manager = document.getElementById('tag-manager');
+      tagState.open = !tagState.open;
+      manager.classList.toggle('hidden', !tagState.open);
+      document.getElementById('toggle-tags-btn').textContent = tagState.open ? 'Hide tag tools' : 'Manage tags';
+      document.getElementById('toggle-tags-btn').setAttribute('aria-expanded', String(tagState.open));
+      if (tagState.open) {
+        await ensureTagSuggestionsLoaded();
+        document.getElementById('tag-input').focus();
+      }
+    }
+
+    function updateShelfPriority() {
+      const isRead = document.getElementById('exclusive_shelf').value === 'read';
+      document.getElementById('rating-card').classList.toggle('priority', isRead);
+      document.getElementById('date-read-card').classList.toggle('priority', isRead);
+      document.getElementById('read-priority-note').classList.toggle('hidden', !isRead);
+    }
+
+    function updateDetailsSummary() {
+      document.getElementById('details-toggle-label').textContent =
+        document.getElementById('details-panel').open ? 'Hide details' : 'Show details';
+    }
+
+    function populateForm(book) {
+      currentBook = book;
+      document.getElementById('title').value = book.title || '';
+      document.getElementById('author').value = book.author || '';
+      document.getElementById('exclusive_shelf').value = book.exclusive_shelf || 'to_read';
+      document.getElementById('my_rating').value = String(book.my_rating || 0);
+      document.getElementById('isbn13').value = book.isbn13 || '';
+      document.getElementById('pages').value = book.pages || '';
+      document.getElementById('date_read').value = book.date_read || '';
+      document.getElementById('date_added').value = book.date_added || '';
+      document.getElementById('cover_url').value = book.cover_url || '';
+      document.getElementById('my_review').value = book.my_review || '';
+      document.getElementById('google_books_id').value = book.google_books_id || '';
+      setSelectedTags(book.shelves || []);
+      updateReviewStats();
+      updateShelfPriority();
+      renderHero();
+
+      const bookPageHref = `book.html?id=${bookId}`;
+      document.getElementById('book-page-link').href = bookPageHref;
+      document.getElementById('sticky-book-link').href = bookPageHref;
+      document.getElementById('danger-copy').textContent = `Delete “${book.title || 'this book'}” only if you want it gone permanently.`;
+
+      uiState.initialSnapshot = serializeFormState();
+      uiState.dirty = false;
+      uiState.saving = false;
+      updateStickyState();
+      setMessage('', '');
+    }
+
+    function buildRequestBody() {
+      const values = getFormValues();
+      const title = values.title.trim();
+      const author = values.author.trim();
+      const dateAdded = values.date_added || currentBook?.date_added || '';
+      return {
+        title,
+        author,
+        exclusive_shelf: values.exclusive_shelf,
+        my_rating: Number(values.my_rating) || 0,
+        shelves: buildSubmittedShelves(values.exclusive_shelf),
+        isbn13: values.isbn13.trim() || null,
+        pages: values.pages.trim() ? Number(values.pages) : null,
+        date_read: values.date_read || null,
+        date_added: dateAdded,
+        cover_url: values.cover_url.trim() || null,
+        my_review: values.my_review.trim() ? values.my_review : null,
+        google_books_id: values.google_books_id.trim() || null,
+      };
+    }
+
+    async function loadBook() {
+      if (!bookId) {
+        showErrorState('No book ID specified.');
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${apiBase}/api/books/${bookId}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Failed to load book');
+        populateForm(data);
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('edit-form').classList.remove('hidden');
+      } catch (err) {
+        showErrorState(`Failed to load editor: ${err.message}`);
+      }
+    }
+
+    document.getElementById('edit-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const token = getToken();
+      if (!token) {
+        setMessage('Not logged in. Go back and log in first.', 'error');
+        return;
+      }
+
+      const body = buildRequestBody();
+      if (!body.title || !body.author) {
+        setMessage('Title and author are required.', 'error');
+        return;
+      }
+      if (!body.date_added) {
+        setMessage('Date added is required.', 'error');
+        return;
+      }
+
+      uiState.saving = true;
+      updateStickyState();
+      setMessage('', '');
+
+      try {
+        const resp = await fetch(`${apiBase}/api/books/${bookId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Failed to save');
+        populateForm(data);
+        if (uiState.reviewMode === 'preview') renderReviewPreview();
+        setMessage(`Saved changes to “${data.title}”.`, 'success');
+      } catch (err) {
+        uiState.saving = false;
+        updateStickyState();
+        setMessage(err.message, 'error');
+      }
+    });
+
+    document.getElementById('delete-btn').addEventListener('click', async () => {
+      const title = currentBook?.title || 'this book';
+      if (!confirm(`Delete “${title}”? This cannot be undone.`)) return;
+
+      const token = getToken();
+      if (!token) {
+        setMessage('Not logged in. Go back and log in first.', 'error');
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${apiBase}/api/books/${bookId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) {
+          const data = await resp.json();
+          throw new Error(data.detail || 'Failed to delete');
+        }
+        window.location.href = 'index.html';
+      } catch (err) {
+        setMessage(err.message, 'error');
+      }
+    });
+
+    document.getElementById('write-mode-btn').addEventListener('click', () => setReviewMode('write'));
+    document.getElementById('preview-mode-btn').addEventListener('click', () => setReviewMode('preview'));
+    document.getElementById('toggle-tags-btn').addEventListener('click', () => { toggleTagManager(); });
+    document.getElementById('toggle-all-tags-btn').addEventListener('click', () => {
+      tagState.showAll = !tagState.showAll;
+      renderTagSuggestions();
+    });
+    document.getElementById('details-panel').addEventListener('toggle', updateDetailsSummary);
+
+    document.getElementById('add-tag-btn').addEventListener('click', () => {
+      addTag(document.getElementById('tag-input').value);
+      document.getElementById('tag-input').focus();
+    });
+
+    document.getElementById('tag-input').addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ',') return;
+      e.preventDefault();
+      addTag(document.getElementById('tag-input').value);
+    });
+
+    document.getElementById('tag-input').addEventListener('input', () => {
+      tagState.showAll = false;
+      renderTagSuggestions();
+    });
+
+    document.getElementById('selected-tags').addEventListener('click', e => {
+      const btn = e.target.closest('[data-remove-tag]');
+      if (!btn) return;
+      removeTag(btn.dataset.removeTag);
+    });
+
+    document.getElementById('tag-suggestions').addEventListener('click', e => {
+      const btn = e.target.closest('[data-add-tag]');
+      if (!btn) return;
+      addTag(btn.dataset.addTag);
+    });
+
+    document.getElementById('all-tag-suggestions').addEventListener('click', e => {
+      const btn = e.target.closest('[data-add-tag]');
+      if (!btn) return;
+      addTag(btn.dataset.addTag);
+    });
+
+    document.getElementById('edit-form').addEventListener('input', e => {
+      if (e.target.id === 'my_review' && uiState.reviewMode === 'preview') renderReviewPreview();
+      updateReviewStats();
+      renderHero();
+      updateShelfPriority();
+      updateDirtyState();
+    });
+
+    document.getElementById('edit-form').addEventListener('change', () => {
+      renderHero();
+      updateShelfPriority();
+      updateDirtyState();
+    });
+
+    window.addEventListener('beforeunload', e => {
+      if (!uiState.dirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+
+    updateDetailsSummary();
+    setReviewMode('write');
+    loadBook();
+  </script>
 </body>
 </html>

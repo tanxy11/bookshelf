@@ -129,6 +129,23 @@ def _log_book_activity(conn, *, event_type: str | None, book: dict) -> None:
     )
 
 
+def _books_from_payload(books_payload: dict) -> list[dict]:
+    books = books_payload.get("books", {}) if isinstance(books_payload, dict) else {}
+    return [
+        *((books.get("read") or []) if isinstance(books.get("read"), list) else []),
+        *((books.get("currently_reading") or []) if isinstance(books.get("currently_reading"), list) else []),
+        *((books.get("to_read") or []) if isinstance(books.get("to_read"), list) else []),
+    ]
+
+
+def _sqlite_note_counts(conn) -> dict[int, int]:
+    rows = conn.execute(
+        "SELECT source_id, COUNT(*) as cnt FROM notes "
+        "WHERE source_type = 'book' GROUP BY source_id"
+    ).fetchall()
+    return {row["source_id"]: row["cnt"] for row in rows}
+
+
 # ── LLM regeneration state ──────────────────────────────────────────────────
 _llm_lock = asyncio.Lock()
 _llm_status: dict = {"status": "idle"}
@@ -262,17 +279,36 @@ async def get_books() -> dict:
 
     # Enrich with note_count per book
     if USE_SQLITE:
-        rows = store.conn().execute(
-            "SELECT source_id, COUNT(*) as cnt FROM notes "
-            "WHERE source_type = 'book' GROUP BY source_id"
-        ).fetchall()
-        counts = {row["source_id"]: row["cnt"] for row in rows}
+        counts = _sqlite_note_counts(store.conn())
         for shelf in books_payload.get("books", {}).values():
             if isinstance(shelf, list):
                 for book in shelf:
                     book["note_count"] = counts.get(book.get("id", 0), 0)
 
     return books_payload
+
+
+@app.get("/api/books/{book_id}")
+async def get_book(book_id: int) -> dict:
+    if USE_SQLITE:
+        from db import get_book_by_id
+
+        conn = store.conn()
+        book = get_book_by_id(conn, book_id)
+        if book is None:
+            raise HTTPException(status_code=404, detail="Book not found.")
+
+        book["note_count"] = _sqlite_note_counts(conn).get(book_id, 0)
+        return book
+
+    books_payload = store.books()
+    book = next(
+        (entry for entry in _books_from_payload(books_payload) if str(entry.get("id", "")) == str(book_id)),
+        None,
+    )
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found.")
+    return book
 
 
 @app.get("/api/taste-profile")
