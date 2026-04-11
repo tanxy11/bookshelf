@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inbox — Xinyu's Bookshelf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f4efe6; --surface: rgba(255,251,245,0.85); --border: rgba(122,92,62,0.16);
+      --border-strong: rgba(122,92,62,0.28); --muted: #7c7267; --text: #261f18;
+      --accent: #7a5c3e; --accent-deep: #5f4329; --accent-soft: #efe1cf;
+      --olive: #5e6954; --olive-soft: #e5ebdd;
+      --danger: #8c5d58; --danger-soft: rgba(140,93,88,0.1);
+      --radius: 14px;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; min-height: 100vh; }
+    a { color: var(--accent-deep); text-decoration: none; }
+    .container { max-width: 760px; margin: 0 auto; padding: 24px; }
+    .back { display: inline-block; margin-bottom: 16px; font-size: .85rem; color: var(--muted); }
+    .back:hover { color: var(--accent-deep); }
+
+    .header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+    h1 { font-family: 'Cormorant Garamond', serif; font-size: 2rem; font-weight: 600; }
+    .subtitle { color: var(--muted); font-size: .88rem; margin-bottom: 24px; }
+    .count-pill { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-deep); font-size: .78rem; font-weight: 600; }
+
+    .empty-state { padding: 40px 20px; text-align: center; color: var(--muted); font-size: .98rem; border: 1px dashed var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+    .empty-state strong { display: block; font-family: 'Cormorant Garamond', serif; font-size: 1.4rem; color: var(--text); margin-bottom: 6px; }
+
+    .auth-prompt { padding: 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); display: grid; gap: 12px; }
+    .auth-prompt h2 { font-family: 'Cormorant Garamond', serif; font-size: 1.4rem; font-weight: 600; }
+    .auth-prompt p { color: var(--muted); font-size: .88rem; }
+    .auth-prompt-row { display: flex; gap: 8px; }
+    .auth-prompt-row input { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.85); font: inherit; }
+
+    .triage-list { display: grid; gap: 20px; margin-top: 8px; }
+    .triage-card {
+      padding: 22px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); box-shadow: 0 6px 22px rgba(79,57,40,0.05);
+      transition: opacity .28s ease, transform .28s ease;
+    }
+    .triage-card.is-removing { opacity: 0; transform: translateY(-6px); pointer-events: none; }
+    .raw-text {
+      font-family: 'Cormorant Garamond', serif; font-size: 1.25rem; line-height: 1.5;
+      color: var(--text); padding: 14px 16px;
+      background: rgba(255,255,255,0.72); border: 1px solid var(--border);
+      border-radius: 12px; white-space: pre-wrap; word-wrap: break-word;
+    }
+    .raw-meta { display: flex; gap: 10px; align-items: center; margin-top: 10px; font-size: .74rem; color: var(--muted); }
+    .raw-meta .channel { text-transform: uppercase; letter-spacing: .08em; }
+    .raw-meta .dot { color: var(--border-strong); }
+
+    .form-grid { display: grid; gap: 14px; margin-top: 18px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group { display: grid; gap: 4px; }
+    .form-group label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .form-group input, .form-group select, .form-group textarea {
+      padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: rgba(255,255,255,0.85); font-size: .88rem; font-family: inherit; color: var(--text);
+    }
+    .form-group textarea { min-height: 100px; resize: vertical; line-height: 1.6; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      outline: none; border-color: rgba(122,92,62,0.42); box-shadow: 0 0 0 3px rgba(122,92,62,0.08);
+    }
+    .form-group.is-missing input, .form-group.is-missing select, .form-group.is-missing textarea,
+    .note-type-row.is-missing {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 3px rgba(140,93,88,0.12);
+    }
+
+    .note-type-row {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 6px;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: rgba(255,255,255,0.7);
+    }
+    .note-type-row label {
+      display: inline-flex; align-items: center; padding: 6px 12px;
+      font-size: .8rem; color: var(--muted); cursor: pointer; border-radius: 8px;
+      font-weight: 500; text-transform: none; letter-spacing: 0;
+    }
+    .note-type-row input[type="radio"] { display: none; }
+    .note-type-row input[type="radio"]:checked + span {
+      background: var(--accent-deep); color: #fff;
+      padding: 6px 12px; border-radius: 8px;
+    }
+    .note-type-row label span { padding: 6px 12px; border-radius: 8px; transition: background .12s, color .12s; }
+
+    .action-row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+    .btn { padding: 10px 20px; border: none; border-radius: 10px; font-family: inherit; font-size: .86rem; font-weight: 600; cursor: pointer; transition: background .14s, transform .14s, opacity .14s; }
+    .btn-primary { background: var(--accent-deep); color: #fff; }
+    .btn-primary:hover { background: var(--accent); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--danger-soft); color: var(--danger); border-color: rgba(140,93,88,0.22); }
+    .btn-secondary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .card-error {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+      background: var(--danger-soft); color: var(--danger);
+      border: 1px solid rgba(140,93,88,0.22); font-size: .82rem;
+    }
+    .hidden { display: none !important; }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+      padding: 12px 20px; background: var(--olive); color: #fff;
+      border-radius: 999px; font-size: .86rem; font-weight: 500;
+      box-shadow: 0 10px 30px rgba(69,52,35,0.18);
+      opacity: 0; transition: opacity .22s, transform .22s;
+      pointer-events: none; z-index: 1000;
+    }
+    .toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.is-error { background: var(--danger); }
+
+    .loading { padding: 40px 20px; text-align: center; color: var(--muted); }
+
+    @media (max-width: 560px) {
+      .form-row { grid-template-columns: 1fr; }
+      .container { padding: 16px; }
+      h1 { font-size: 1.65rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="index.html">&larr; Back to bookshelf</a>
+
+  <div class="header-row">
+    <h1>Inbox</h1>
+    <span class="count-pill hidden" id="count-pill"></span>
+  </div>
+  <p class="subtitle">Review captures sent from Telegram and apply them as real notes.</p>
+
+  <div class="loading" id="loading">Loading captures…</div>
+
+  <div class="auth-prompt hidden" id="auth-prompt">
+    <h2>Log in to triage</h2>
+    <p>Enter your bearer token to review pending captures.</p>
+    <div class="auth-prompt-row">
+      <input type="password" id="auth-token-input" placeholder="Bearer token…">
+      <button class="btn btn-primary" id="auth-login-btn">Login</button>
+    </div>
+  </div>
+
+  <div class="empty-state hidden" id="empty-state">
+    <strong>No pending captures.</strong>
+    Go take a walk.
+  </div>
+
+  <div class="triage-list" id="triage-list"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const AUTH_KEY = 'bookshelf_auth_token';
+const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const localApiPort = location.port === '8010' ? '8011' : '8001';
+const apiBase = isLocalHost ? `http://127.0.0.1:${localApiPort}` : '';
+
+const NOTE_TYPES = ['thought', 'quote', 'connection', 'disagreement', 'question'];
+
+let allBooks = [];
+
+function getToken() { return localStorage.getItem(AUTH_KEY) || ''; }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;'); }
+
+function authHeaders() {
+  const t = getToken();
+  return t ? { 'Authorization': `Bearer ${t}` } : {};
+}
+
+// ── Auth gate ─────────────────────────────────────────────────────────────
+function showAuthPrompt() {
+  document.getElementById('loading').classList.add('hidden');
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('triage-list').innerHTML = '';
+  document.getElementById('count-pill').classList.add('hidden');
+  document.getElementById('auth-prompt').classList.remove('hidden');
+}
+
+function hideAuthPrompt() {
+  document.getElementById('auth-prompt').classList.add('hidden');
+}
+
+document.getElementById('auth-login-btn').addEventListener('click', () => {
+  const token = document.getElementById('auth-token-input').value.trim();
+  if (!token) return;
+  localStorage.setItem(AUTH_KEY, token);
+  hideAuthPrompt();
+  document.getElementById('loading').classList.remove('hidden');
+  init();
+});
+
+document.getElementById('auth-token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('auth-login-btn').click(); }
+});
+
+// ── Relative time ─────────────────────────────────────────────────────────
+function formatRelativeTime(isoStr) {
+  if (!isoStr) return '';
+  const then = new Date(isoStr);
+  if (isNaN(then.getTime())) return '';
+  const now = Date.now();
+  const diffMs = now - then.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? '' : 's'} ago`;
+  return then.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg, isError = false) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.toggle('is-error', isError);
+  toast.classList.add('is-visible');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 2800);
+}
+
+// ── Fetch books and captures ──────────────────────────────────────────────
+async function fetchBooks() {
+  const resp = await fetch(`${apiBase}/api/books`);
+  if (!resp.ok) throw new Error('Failed to load books');
+  const data = await resp.json();
+  const read = data.books?.read || [];
+  const reading = data.books?.currently_reading || [];
+  return [...read, ...reading]
+    .map(b => ({ id: b.id, title: b.title, author: b.author }))
+    .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+}
+
+async function fetchCaptures() {
+  const resp = await fetch(`${apiBase}/api/capture`, { headers: authHeaders() });
+  if (resp.status === 401) { const err = new Error('Unauthorized'); err.status = 401; throw err; }
+  if (!resp.ok) throw new Error('Failed to load captures');
+  return resp.json();
+}
+
+// ── Render triage cards ───────────────────────────────────────────────────
+function bookOptionsHtml(selectedId) {
+  const opts = allBooks.map(b => {
+    const sel = selectedId != null && String(selectedId) === String(b.id) ? ' selected' : '';
+    return `<option value="${escAttr(b.id)}"${sel}>${escHtml(b.title)} — ${escHtml(b.author)}</option>`;
+  }).join('');
+  const placeholder = selectedId == null ? '<option value="" selected>Select a book…</option>' : '<option value="">Select a book…</option>';
+  return placeholder + opts;
+}
+
+function noteTypeRadios(captureId, selected) {
+  const selectedType = selected && NOTE_TYPES.includes(selected) ? selected : 'thought';
+  return NOTE_TYPES.map(t => {
+    const checked = t === selectedType ? 'checked' : '';
+    const label = t.charAt(0).toUpperCase() + t.slice(1);
+    return `<label>
+      <input type="radio" name="note-type-${captureId}" value="${t}" ${checked}>
+      <span>${label}</span>
+    </label>`;
+  }).join('');
+}
+
+function parseTagsFromString(str) {
+  if (!str) return [];
+  return String(str).split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
+}
+
+function parseTagsFromJson(raw) {
+  if (!raw) return '';
+  try {
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) return arr.join(', ');
+  } catch (_) { /* ignore */ }
+  return '';
+}
+
+function renderCard(capture) {
+  const card = document.createElement('div');
+  card.className = 'triage-card';
+  card.dataset.id = String(capture.id);
+
+  const prefillContent = capture.resolved_content && capture.resolved_content.length
+    ? capture.resolved_content
+    : capture.raw_text;
+
+  card.innerHTML = `
+    <div class="raw-text">${escHtml(capture.raw_text)}</div>
+    <div class="raw-meta">
+      <span class="channel">${escHtml(capture.source_channel || 'telegram')}</span>
+      <span class="dot">·</span>
+      <span>#${escHtml(capture.id)}</span>
+      <span class="dot">·</span>
+      <span>${escHtml(formatRelativeTime(capture.created_at))}</span>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group" data-field="book">
+        <label>Book</label>
+        <select class="capture-book">${bookOptionsHtml(capture.resolved_book_id)}</select>
+      </div>
+
+      <div class="form-group" data-field="note-type">
+        <label>Note type</label>
+        <div class="note-type-row">
+          ${noteTypeRadios(capture.id, capture.resolved_note_type)}
+        </div>
+      </div>
+
+      <div class="form-group" data-field="content">
+        <label>Content</label>
+        <textarea class="capture-content">${escHtml(prefillContent)}</textarea>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Page / location</label>
+          <input type="text" class="capture-page" placeholder="p.171, ch.3, etc." value="${escAttr(capture.resolved_page_or_location || '')}">
+        </div>
+        <div class="form-group">
+          <label>Tags</label>
+          <input type="text" class="capture-tags" placeholder="comma-separated tags" value="${escAttr(parseTagsFromJson(capture.resolved_tags))}">
+        </div>
+      </div>
+
+      <div class="card-error hidden"></div>
+
+      <div class="action-row">
+        <button type="button" class="btn btn-secondary capture-discard">Discard</button>
+        <button type="button" class="btn btn-primary capture-apply">Apply</button>
+      </div>
+    </div>
+  `;
+
+  // Apply button
+  card.querySelector('.capture-apply').addEventListener('click', () => applyCapture(card, capture.id));
+
+  // Discard button
+  card.querySelector('.capture-discard').addEventListener('click', () => discardCapture(card, capture.id));
+
+  // Clear missing-field highlight on interact
+  card.querySelectorAll('[data-field]').forEach(el => {
+    el.addEventListener('input', () => el.classList.remove('is-missing'));
+    el.addEventListener('change', () => el.classList.remove('is-missing'));
+  });
+
+  return card;
+}
+
+function showCardError(card, msg) {
+  const el = card.querySelector('.card-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function clearCardError(card) {
+  const el = card.querySelector('.card-error');
+  el.textContent = '';
+  el.classList.add('hidden');
+}
+
+function setCardBusy(card, busy) {
+  card.querySelectorAll('button').forEach(b => { b.disabled = busy; });
+}
+
+function fadeOutAndRemove(card) {
+  card.classList.add('is-removing');
+  setTimeout(() => {
+    card.remove();
+    updateCountAfterRemoval();
+  }, 300);
+}
+
+function updateCountAfterRemoval() {
+  const remaining = document.querySelectorAll('.triage-card').length;
+  const pill = document.getElementById('count-pill');
+  if (remaining === 0) {
+    pill.classList.add('hidden');
+    document.getElementById('empty-state').classList.remove('hidden');
+  } else {
+    pill.textContent = `${remaining} pending`;
+  }
+}
+
+// ── Apply / Discard ───────────────────────────────────────────────────────
+async function applyCapture(card, captureId) {
+  clearCardError(card);
+
+  const bookSelect = card.querySelector('.capture-book');
+  const noteTypeInput = card.querySelector(`input[name="note-type-${captureId}"]:checked`);
+  const contentEl = card.querySelector('.capture-content');
+  const pageEl = card.querySelector('.capture-page');
+  const tagsEl = card.querySelector('.capture-tags');
+
+  const bookId = bookSelect.value ? parseInt(bookSelect.value) : null;
+  const noteType = noteTypeInput ? noteTypeInput.value : null;
+  const content = (contentEl.value || '').trim();
+
+  // Client-side validation
+  let missing = false;
+  if (!bookId) {
+    card.querySelector('[data-field="book"]').classList.add('is-missing');
+    missing = true;
+  }
+  if (!noteType) {
+    card.querySelector('[data-field="note-type"]').classList.add('is-missing');
+    missing = true;
+  }
+  if (!content) {
+    card.querySelector('[data-field="content"]').classList.add('is-missing');
+    missing = true;
+  }
+  if (missing) {
+    showCardError(card, 'Fill in the highlighted fields before applying.');
+    return;
+  }
+
+  const tags = parseTagsFromString(tagsEl.value);
+  const body = {
+    resolved_book_id: bookId,
+    resolved_note_type: noteType,
+    resolved_content: content,
+    resolved_page_or_location: pageEl.value.trim() || null,
+    resolved_tags: tags.length ? tags : null,
+  };
+
+  setCardBusy(card, true);
+  try {
+    // 1. PUT resolved fields
+    const putResp = await fetch(`${apiBase}/api/capture/${captureId}`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!putResp.ok) {
+      const data = await putResp.json().catch(() => ({}));
+      throw new Error(data.detail || `Update failed (${putResp.status})`);
+    }
+
+    // 2. POST apply
+    const applyResp = await fetch(`${apiBase}/api/capture/${captureId}/apply`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    if (!applyResp.ok) {
+      const data = await applyResp.json().catch(() => ({}));
+      throw new Error(data.detail || `Apply failed (${applyResp.status})`);
+    }
+
+    const book = allBooks.find(b => b.id === bookId);
+    const bookTitle = book ? book.title : 'book';
+    showToast(`Applied to ${bookTitle}`);
+    fadeOutAndRemove(card);
+  } catch (err) {
+    showCardError(card, err.message);
+    setCardBusy(card, false);
+  }
+}
+
+async function discardCapture(card, captureId) {
+  clearCardError(card);
+  setCardBusy(card, true);
+  try {
+    const resp = await fetch(`${apiBase}/api/capture/${captureId}/discard`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || `Discard failed (${resp.status})`);
+    }
+    showToast('Discarded');
+    fadeOutAndRemove(card);
+  } catch (err) {
+    showCardError(card, err.message);
+    setCardBusy(card, false);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  if (!getToken()) {
+    showAuthPrompt();
+    return;
+  }
+  try {
+    const [booksResult, capturesResult] = await Promise.all([fetchBooks(), fetchCaptures()]);
+    allBooks = booksResult;
+
+    const captures = capturesResult.captures || [];
+    const list = document.getElementById('triage-list');
+    list.innerHTML = '';
+
+    document.getElementById('loading').classList.add('hidden');
+
+    if (!captures.length) {
+      document.getElementById('empty-state').classList.remove('hidden');
+      document.getElementById('count-pill').classList.add('hidden');
+      return;
+    }
+
+    document.getElementById('empty-state').classList.add('hidden');
+    const pill = document.getElementById('count-pill');
+    pill.textContent = `${captures.length} pending`;
+    pill.classList.remove('hidden');
+
+    captures.forEach(c => list.appendChild(renderCard(c)));
+  } catch (err) {
+    document.getElementById('loading').classList.add('hidden');
+    if (err.status === 401) {
+      localStorage.removeItem(AUTH_KEY);
+      showAuthPrompt();
+      return;
+    }
+    showToast(err.message || 'Failed to load inbox', true);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1265,6 +1265,22 @@
       font-size: .72rem;
     }
 
+    .inbox-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 6px;
+      margin-left: 6px;
+      border-radius: 999px;
+      background: var(--accent-deep);
+      color: #fff;
+      font-size: .68rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
     .admin-llm-status {
       display: inline-flex;
       align-items: center;
@@ -1989,6 +2005,7 @@
         <h2 class="section-heading">Books Read <span class="section-count" id="read-count"></span></h2>
       </div>
       <div class="admin-actions hidden" id="admin-actions">
+        <a class="admin-btn" href="inbox.html" id="inbox-link">Inbox<span class="inbox-badge hidden" id="inbox-badge"></span></a>
         <a class="admin-btn" href="add.html">+ Add Book</a>
       </div>
     </div>
@@ -3306,9 +3323,38 @@ function setAuthState(loggedIn) {
   if (adminActions) adminActions.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) llmRuntimeStatus = null;
   syncLlmAdminControls();
+  if (loggedIn) {
+    refreshInboxBadge();
+  } else {
+    const badge = document.getElementById('inbox-badge');
+    if (badge) { badge.textContent = ''; badge.classList.add('hidden'); }
+  }
   if (hasLoadedInitialData) {
     renderTasteProfile(tasteProfilePayload);
     renderRecommendations(recommendationsPayload);
+  }
+}
+
+async function refreshInboxBadge() {
+  const token = getToken();
+  const badge = document.getElementById('inbox-badge');
+  if (!token || !badge) return;
+  try {
+    const resp = await fetch(`${apiBase}/api/capture`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const count = data.count || 0;
+    if (count > 0) {
+      badge.textContent = String(count);
+      badge.classList.remove('hidden');
+    } else {
+      badge.textContent = '';
+      badge.classList.add('hidden');
+    }
+  } catch (_) {
+    // non-blocking: ignore badge errors
   }
 }
 
