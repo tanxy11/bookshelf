@@ -1114,6 +1114,11 @@
     .collapsible-content { display: none; margin-top: 16px; }
     .collapsible-content.open { display: block; }
 
+    .toread-controls {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+    }
+
     .toread-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -1121,24 +1126,49 @@
     }
 
     .toread-item {
-      display: flex;
-      align-items: baseline;
-      gap: 7px;
-      padding: 10px 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 8px 12px;
+      width: 100%;
+      padding: 12px 44px 12px 14px;
       border: 1px solid rgba(122, 92, 62, 0.08);
       border-radius: 14px;
       background: rgba(255, 252, 247, 0.72);
-      transition: background .12s ease, border-color .12s ease, transform .12s ease;
+      transition: background .12s ease, border-color .12s ease, transform .12s ease, box-shadow .12s ease;
     }
 
-    .toread-item:hover {
+    .toread-item.book-card:hover,
+    .toread-item.book-card:focus-visible,
+    .toread-item.book-card.is-active {
       background: rgba(122, 92, 62, 0.07);
-      border-color: rgba(122, 92, 62, 0.14);
+      border-color: rgba(122, 92, 62, 0.16);
       transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(44, 38, 32, 0.08);
+    }
+
+    .toread-copy {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
     }
 
     .toread-title { font-size: .84rem; font-weight: 600; color: var(--text); }
     .toread-author { font-size: .76rem; color: var(--muted); }
+
+    .toread-meta {
+      font-size: .72rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .toread-item .edit-icon {
+      top: 50%;
+      right: 10px;
+      transform: translateY(-50%);
+    }
 
     .empty-state {
       padding: 52px 0 36px;
@@ -1696,6 +1726,13 @@
       .book-wall { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
       .currently-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
       .search-input { max-width: 100%; }
+      .toread-item {
+        grid-template-columns: 1fr;
+        padding-right: 46px;
+      }
+      .toread-meta {
+        white-space: normal;
+      }
       .book-hovercard {
         width: min(240px, calc(100vw - 20px));
         padding: 10px;
@@ -2071,7 +2108,14 @@
       <span>Show list</span>
     </button>
     <div class="collapsible-content" id="toread-content">
+      <div class="controls toread-controls">
+        <div class="controls-row">
+          <span class="control-label">Search</span>
+          <input class="search-input" type="search" id="to-read-search-input" placeholder="Title or author…" autocomplete="off">
+        </div>
+      </div>
       <div class="toread-list" id="toread-list"></div>
+      <div class="empty-state hidden" id="to-read-empty-state">No books match your search.</div>
     </div>
   </div>
 </section>
@@ -2178,8 +2222,9 @@
 </div>
 
 <script>
-const state = { sort: 'date_read', rating: 0, shelves: [], query: '' };
+const state = { sort: 'date_read', rating: 0, shelves: [], query: '', toReadQuery: '' };
 let allReadBooks = [];
+let allToReadBooks = [];
 let activeHoverCard = null;
 let healthPayload = null;
 let booksGeneratedAt = '';
@@ -2460,7 +2505,11 @@ function buildCardDataAttrs(book, context) {
     'data-avg-rating': book.avg_rating || '',
     'data-pages': book.pages || '',
     'data-date': book.date_read || '',
-    'data-status': context === 'currently-reading' ? 'Reading now' : '',
+    'data-status': context === 'currently-reading'
+      ? 'Reading now'
+      : context === 'to-read'
+        ? 'Want to read'
+        : '',
     'data-shelves': (book.shelves || []).slice(0, 6).join('|'),
     'data-review': (book.my_review || '').trim(),
     'data-notes': (book.notes || '').trim(),
@@ -2483,6 +2532,22 @@ function buildCard(book, extraClass = '', context = 'read') {
     <div class="book-cover-shell">
       ${buildCoverHtml(book)}
     </div>
+  </button>`;
+}
+
+function buildToReadItem(book) {
+  const attrs = buildCardDataAttrs(book, 'to-read');
+  const label = `${book.title || 'Untitled'} by ${book.author || 'Unknown author'}`;
+  const editIcon = book.id ? `<a class="edit-icon" href="edit.html?id=${book.id}" title="Edit" onclick="event.stopPropagation()">&#9998;</a>` : '';
+  const addedLabel = book.date_added ? `Added ${formatDate(book.date_added)}` : '';
+
+  return `<button type="button" class="toread-item book-card" ${attrs} aria-label="${escHtml(label)}">
+    <span class="toread-copy">
+      <span class="toread-title">${escHtml(book.title || 'Untitled')}</span>
+      <span class="toread-author">— ${escHtml(book.author || 'Unknown author')}</span>
+    </span>
+    ${addedLabel ? `<span class="toread-meta">${escHtml(addedLabel)}</span>` : ''}
+    ${editIcon}
   </button>`;
 }
 
@@ -2697,6 +2762,7 @@ function syncHash() {
     rating: state.rating > 0 ? state.rating : '',
     shelf: state.shelves.join(','),
     q: state.query,
+    to_read_q: state.toReadQuery,
   });
 }
 
@@ -2719,6 +2785,11 @@ function applyHash() {
     state.query = p.q;
     document.getElementById('search-input').value = p.q;
   }
+  if (p.to_read_q) {
+    state.toReadQuery = p.to_read_q;
+    document.getElementById('to-read-search-input').value = p.to_read_q;
+    setToReadExpanded(true);
+  }
 }
 
 function renderCurrentlyReading(books) {
@@ -2734,14 +2805,34 @@ function renderCurrentlyReading(books) {
   grid.innerHTML = books.map(book => buildCard(book, '', 'currently-reading')).join('');
 }
 
-function renderToRead(books) {
-  document.getElementById('to-read-count').textContent = books.length.toLocaleString();
-  document.getElementById('toread-list').innerHTML = books.map(book => `
-    <div class="toread-item">
-      <span class="toread-title">${escHtml(book.title)}</span>
-      <span class="toread-author">— ${escHtml(book.author)}</span>
-    </div>
-  `).join('');
+function filterToReadBooks(books) {
+  if (!state.toReadQuery) return [...books];
+  const q = state.toReadQuery.toLowerCase();
+  return books.filter(book => `${book.title || ''} ${book.author || ''}`.toLowerCase().includes(q));
+}
+
+function renderToRead(books = allToReadBooks) {
+  const list = document.getElementById('toread-list');
+  const countEl = document.getElementById('to-read-count');
+  const emptyEl = document.getElementById('to-read-empty-state');
+  const filtered = filterToReadBooks(books);
+
+  hideHovercard();
+  countEl.textContent = filtered.length === books.length
+    ? books.length.toLocaleString()
+    : `${filtered.length.toLocaleString()} / ${books.length.toLocaleString()}`;
+
+  if (!filtered.length) {
+    list.innerHTML = '';
+    emptyEl.textContent = books.length
+      ? 'No books match your search.'
+      : 'No books on the list yet.';
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+
+  emptyEl.classList.add('hidden');
+  list.innerHTML = filtered.map(book => buildToReadItem(book)).join('');
 }
 
 function parseLlmTargets(rawValue) {
@@ -3138,13 +3229,14 @@ async function load() {
   booksGeneratedAt = generated_at || '';
 
   allReadBooks = books.read || [];
+  allToReadBooks = books.to_read || [];
   renderActivityPreview(activityResult.status === 'fulfilled' ? activityResult.value : { items: [] });
   buildShelfTags(allReadBooks);
   applyHash();
   renderReadGrid();
   renderReadingWeeks(allReadBooks);
   renderCurrentlyReading(books.currently_reading || []);
-  renderToRead(books.to_read || []);
+  renderToRead(allToReadBooks);
   hasLoadedInitialData = true;
   renderTasteProfile(tasteResult.status === 'fulfilled' ? tasteResult.value : null);
   renderRecommendations(recommendationsResult.status === 'fulfilled' ? recommendationsResult.value : null);
@@ -3199,12 +3291,28 @@ document.getElementById('search-input').addEventListener('input', e => {
   }, 150);
 });
 
-document.getElementById('toread-toggle').addEventListener('click', function() {
-  this.classList.toggle('open');
-  document.getElementById('toread-content').classList.toggle('open');
-  const isOpen = this.classList.contains('open');
-  this.querySelector('.chevron').textContent = isOpen ? '▼' : '▶';
-  this.querySelector('span:last-child').textContent = isOpen ? 'Hide list' : 'Show list';
+let toReadSearchTimer;
+document.getElementById('to-read-search-input').addEventListener('input', e => {
+  clearTimeout(toReadSearchTimer);
+  toReadSearchTimer = setTimeout(() => {
+    state.toReadQuery = e.target.value.trim();
+    syncHash();
+    renderToRead();
+  }, 150);
+});
+
+const toReadToggleEl = document.getElementById('toread-toggle');
+const toReadContentEl = document.getElementById('toread-content');
+
+function setToReadExpanded(isOpen) {
+  toReadToggleEl.classList.toggle('open', isOpen);
+  toReadContentEl.classList.toggle('open', isOpen);
+  toReadToggleEl.querySelector('.chevron').textContent = isOpen ? '▼' : '▶';
+  toReadToggleEl.querySelector('span:last-child').textContent = isOpen ? 'Hide list' : 'Show list';
+}
+
+toReadToggleEl.addEventListener('click', () => {
+  setToReadExpanded(!toReadToggleEl.classList.contains('open'));
 });
 
 document.getElementById('read-controls-toggle').addEventListener('click', function() {
