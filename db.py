@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -223,6 +224,55 @@ def _migration_v8(conn: sqlite3.Connection) -> None:
     conn.executescript(_CAPTURE_EVENTS_SCHEMA)
 
 
+_BOOK_READ_EVENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS book_read_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL,
+    started_on TEXT,
+    finished_on TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    CHECK (started_on IS NULL OR started_on = '' OR started_on <= finished_on)
+);
+
+CREATE INDEX IF NOT EXISTS idx_book_read_events_book_finished
+    ON book_read_events(book_id, finished_on DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_book_read_events_finished
+    ON book_read_events(finished_on DESC);
+"""
+
+
+def _migration_v9(conn: sqlite3.Connection) -> None:
+    conn.executescript(_BOOK_READ_EVENTS_SCHEMA)
+    conn.execute(
+        """INSERT INTO book_read_events (book_id, finished_on)
+           SELECT books.id, books.date_read
+           FROM books
+           WHERE books.date_read IS NOT NULL
+             AND books.date_read != ''
+             AND NOT EXISTS (
+                 SELECT 1
+                 FROM book_read_events
+                 WHERE book_read_events.book_id = books.id
+                   AND book_read_events.finished_on = books.date_read
+             )"""
+    )
+    conn.execute(
+        """UPDATE books
+           SET date_read = (
+               SELECT MAX(finished_on)
+               FROM book_read_events
+               WHERE book_read_events.book_id = books.id
+           )
+           WHERE EXISTS (
+               SELECT 1
+               FROM book_read_events
+               WHERE book_read_events.book_id = books.id
+           )"""
+    )
+
+
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _migration_v1),
     (2, _migration_v2),
@@ -232,6 +282,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (6, _migration_v6),
     (7, _migration_v7),
     (8, _migration_v8),
+    (9, _migration_v9),
 ]
 
 
@@ -309,8 +360,92 @@ def _row_to_book_dict(row: sqlite3.Row) -> dict[str, Any]:
     shelves_raw = d.pop("shelves", None)
     d["shelves"] = json.loads(shelves_raw) if shelves_raw else []
     # API returns my_review, not review, for frontend compat
-    d["my_review"] = d.pop("review", None)
+    d["my_review"] = d.pop("review", None) or ""
+    d["isbn13"] = d.get("isbn13") or ""
+    d["date_read"] = d.get("date_read") or ""
+    d["date_added"] = d.get("date_added") or ""
+    d["goodreads_id"] = d.get("goodreads_id") or ""
+    d["my_rating"] = d.get("my_rating") or 0
     return d
+
+
+def _normalize_date_value(value: Any, field_name: str, *, required: bool = False) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        if required:
+            raise ValueError(f"{field_name} is required.")
+        return None
+    try:
+        date.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a YYYY-MM-DD date.") from exc
+    return raw
+
+
+def normalize_read_events(raw_events: Any) -> list[dict[str, str | None]]:
+    if raw_events is None:
+        return []
+    if not isinstance(raw_events, list):
+        raise ValueError("read_events must be a list.")
+
+    normalized: list[dict[str, str | None]] = []
+    for idx, raw_event in enumerate(raw_events, start=1):
+        if not isinstance(raw_event, dict):
+            raise ValueError(f"read_events[{idx}] must be an object.")
+        started_on = _normalize_date_value(raw_event.get("started_on"), f"read_events[{idx}].started_on")
+        finished_on = _normalize_date_value(
+            raw_event.get("finished_on"),
+            f"read_events[{idx}].finished_on",
+            required=True,
+        )
+        if started_on and finished_on and started_on > finished_on:
+            raise ValueError(f"read_events[{idx}].started_on cannot be after finished_on.")
+        normalized.append({"started_on": started_on, "finished_on": finished_on})
+
+    return normalized
+
+
+def list_read_events(conn: sqlite3.Connection, book_id: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """SELECT id, book_id, started_on, finished_on, created_at, updated_at
+           FROM book_read_events
+           WHERE book_id = ?
+           ORDER BY finished_on DESC, id DESC""",
+        (book_id,),
+    ).fetchall()
+    events: list[dict[str, Any]] = []
+    for row in rows:
+        event = dict(row)
+        event["started_on"] = event.get("started_on") or ""
+        event["finished_on"] = event.get("finished_on") or ""
+        events.append(event)
+    return events
+
+
+def sync_book_latest_read_date(conn: sqlite3.Connection, book_id: int) -> None:
+    row = conn.execute(
+        "SELECT MAX(finished_on) AS latest FROM book_read_events WHERE book_id = ?",
+        (book_id,),
+    ).fetchone()
+    latest = row["latest"] if row else None
+    conn.execute(
+        """UPDATE books
+           SET date_read = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+           WHERE id = ?""",
+        (latest, book_id),
+    )
+
+
+def replace_read_events(conn: sqlite3.Connection, book_id: int, raw_events: Any) -> None:
+    events = normalize_read_events(raw_events)
+    conn.execute("DELETE FROM book_read_events WHERE book_id = ?", (book_id,))
+    for event in events:
+        conn.execute(
+            """INSERT INTO book_read_events (book_id, started_on, finished_on)
+               VALUES (?, ?, ?)""",
+            (book_id, event["started_on"], event["finished_on"]),
+        )
+    sync_book_latest_read_date(conn, book_id)
 
 
 def insert_book(conn: sqlite3.Connection, book: dict[str, Any]) -> int:
@@ -338,12 +473,24 @@ def insert_book(conn: sqlite3.Connection, book: dict[str, Any]) -> int:
             book.get("google_books_id") or None,
         ),
     )
-    return cursor.lastrowid
+    book_id = cursor.lastrowid
+    if "read_events" in book:
+        replace_read_events(conn, book_id, book.get("read_events") or [])
+    elif book.get("date_read"):
+        replace_read_events(
+            conn,
+            book_id,
+            [{"started_on": None, "finished_on": book.get("date_read")}],
+        )
+    return book_id
 
 
 def get_books_by_shelf(conn: sqlite3.Connection, shelf: str) -> list[dict[str, Any]]:
     if shelf == "read":
-        order = "date_read DESC, date_added DESC"
+        order = """
+            CASE WHEN date_read IS NOT NULL AND date_read != '' THEN 0 ELSE 1 END,
+            date_read DESC, date_added DESC
+        """
     elif shelf == "currently_reading":
         order = "date_added DESC, date_read DESC"
     else:
@@ -353,14 +500,23 @@ def get_books_by_shelf(conn: sqlite3.Connection, shelf: str) -> list[dict[str, A
         f"SELECT * FROM books WHERE exclusive_shelf = ? ORDER BY {order}",
         (shelf,),
     ).fetchall()
-    return [_row_to_book_dict(row) for row in rows]
+    books = [_row_to_book_dict(row) for row in rows]
+    for book in books:
+        book["read_events"] = list_read_events(conn, book["id"])
+        if not book["read_events"] and book.get("date_read"):
+            book["read_events"] = [{"id": None, "started_on": "", "finished_on": book["date_read"]}]
+    return books
 
 
 def get_book_by_id(conn: sqlite3.Connection, book_id: int) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
     if row is None:
         return None
-    return _row_to_book_dict(row)
+    book = _row_to_book_dict(row)
+    book["read_events"] = list_read_events(conn, book_id)
+    if not book["read_events"] and book.get("date_read"):
+        book["read_events"] = [{"id": None, "started_on": "", "finished_on": book["date_read"]}]
+    return book
 
 
 def update_book(conn: sqlite3.Connection, book_id: int, fields: dict[str, Any]) -> bool:

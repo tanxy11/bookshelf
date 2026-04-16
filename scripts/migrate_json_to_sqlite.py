@@ -68,6 +68,8 @@ def migrate_books(conn, books_payload: dict) -> dict[str, int]:
                 "cover_url": None,
                 "google_books_id": None,
             }
+            if isinstance(book.get("read_events"), list):
+                book_data["read_events"] = book["read_events"]
 
             try:
                 insert_book(conn, book_data)

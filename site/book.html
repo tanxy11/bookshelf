@@ -121,6 +121,74 @@
       font-family: 'Cormorant Garamond', serif; font-size: 1.58rem; font-weight: 600;
       margin-bottom: 14px; color: rgba(52, 41, 34, 0.94);
     }
+    .read-history-list {
+      position: relative;
+      display: grid;
+      gap: 14px;
+      padding-left: 24px;
+      max-width: 720px;
+    }
+    .read-history-list::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: 5px;
+      bottom: 5px;
+      width: 1px;
+      background: linear-gradient(
+        to bottom,
+        rgba(122, 92, 62, 0.08),
+        rgba(122, 92, 62, 0.28),
+        rgba(122, 92, 62, 0.08)
+      );
+    }
+    .read-history-item {
+      position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 5px 12px;
+      min-height: 26px;
+      color: rgba(52, 41, 34, 0.94);
+      font-size: .95rem;
+    }
+    .read-history-item::before {
+      content: "";
+      position: absolute;
+      left: -21px;
+      top: .48em;
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--bg);
+      border: 2px solid rgba(122, 92, 62, 0.48);
+      box-shadow: 0 0 0 4px rgba(255, 252, 247, 0.72);
+    }
+    .read-history-item:first-child::before {
+      border-color: var(--accent-deep);
+      background: rgba(122, 92, 62, 0.16);
+    }
+    .read-history-item strong {
+      color: var(--accent-deep);
+      font-weight: 600;
+    }
+    .read-history-label {
+      text-transform: uppercase;
+      letter-spacing: .11em;
+      font-size: .72rem;
+      color: rgba(132, 118, 109, 0.9);
+      font-weight: 700;
+    }
+    .read-history-date {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.12rem;
+      line-height: 1.1;
+      color: rgba(52, 41, 34, 0.96);
+    }
+    .read-history-separator {
+      color: rgba(122, 92, 62, 0.42);
+      font-size: .9rem;
+    }
     .review-text {
       line-height: 1.5;
       font-size: 1.03rem;
@@ -367,6 +435,10 @@
       <div id="add-note-wrap"></div>
       <div id="notes-list"></div>
     </div>
+    <div class="section" id="read-history-section" style="display:none">
+      <h2 class="section-title">Read history</h2>
+      <div class="read-history-list" id="read-history-list"></div>
+    </div>
   </div>
 </div>
 
@@ -407,6 +479,12 @@ function formatDate(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function formatFullDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 function formatNoteDate(isoStr) {
@@ -463,6 +541,31 @@ function renderReview(book) {
     document.getElementById('review-text').textContent = review;
   }
   document.getElementById('review-section').style.display = '';
+}
+
+function renderReadHistory(book) {
+  const events = Array.isArray(book.read_events) ? book.read_events : [];
+  const finishedEvents = events.filter(event => event && event.finished_on);
+  if (!finishedEvents.length) return;
+
+  document.getElementById('read-history-list').innerHTML = finishedEvents.map(event => {
+    const finished = `
+      <span class="read-history-label">Finished</span>
+      <span class="read-history-date">${escHtml(formatFullDate(event.finished_on))}</span>
+    `;
+    if (!event.started_on) {
+      return `<div class="read-history-item">${finished}</div>`;
+    }
+    return `
+      <div class="read-history-item">
+        <span class="read-history-label">Started</span>
+        <span class="read-history-date">${escHtml(formatFullDate(event.started_on))}</span>
+        <span class="read-history-separator">&rarr;</span>
+        ${finished}
+      </div>
+    `;
+  }).join('');
+  document.getElementById('read-history-section').style.display = '';
 }
 
 // ── Notes rendering ─────────────────────────────────────────────────────────
@@ -1045,6 +1148,7 @@ async function loadPage() {
     }
 
     renderHero(book);
+    renderReadHistory(book);
     renderReview(book);
     renderNotes(notes);
     renderAddNoteForm();

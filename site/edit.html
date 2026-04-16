@@ -484,6 +484,60 @@
       font-size: 0.92rem;
     }
 
+    .read-history-card {
+      margin-top: 12px;
+    }
+
+    .read-history-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .read-history-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .read-event-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+      padding: 10px;
+      border: 1px solid rgba(121, 94, 72, 0.11);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.64);
+    }
+
+    .read-event-field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .read-event-field span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .read-event-remove {
+      align-self: end;
+      border: 1px solid rgba(156, 107, 103, 0.18);
+      border-radius: 999px;
+      background: var(--danger-soft);
+      color: var(--danger);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.86rem;
+      font-weight: 700;
+      padding: 9px 12px;
+    }
+
     .tag-shell {
       margin-top: 16px;
       display: grid;
@@ -884,6 +938,9 @@
       .field-grid.three-col {
         grid-template-columns: 1fr;
       }
+      .read-event-row {
+        grid-template-columns: 1fr;
+      }
       .danger-row,
       .sticky-bar,
       .review-head,
@@ -1004,14 +1061,21 @@
               <option value="5">5 stars</option>
             </select>
           </label>
-          <label class="field-card" id="date-read-card">
-            <span class="field-label">Date Read</span>
-            <input type="date" id="date_read" name="date_read">
-          </label>
         </div>
 
         <div class="priority-note hidden" id="read-priority-note">
-          Because this book is on <strong>Read</strong>, rating and finished date are highlighted as the most visible metadata on the public side.
+          Because this book is on <strong>Read</strong>, rating and read history are highlighted as the most visible metadata on the public side.
+        </div>
+
+        <div class="field-card read-history-card" id="read-history-card">
+          <div class="read-history-toolbar">
+            <div>
+              <span class="field-label">Read History</span>
+              <p class="field-help">Finish date is required for each completed read. Start date is optional.</p>
+            </div>
+            <button type="button" class="ghost-btn small" id="add-read-event-btn">Add read period</button>
+          </div>
+          <div class="read-history-list" id="read-history-list"></div>
         </div>
 
         <div class="tag-shell">
@@ -1249,6 +1313,71 @@
       return d.toLocaleDateString('en-US', options);
     }
 
+    function latestFinishedOn(events) {
+      return (events || [])
+        .map(event => event.finished_on || '')
+        .filter(Boolean)
+        .sort()
+        .pop() || '';
+    }
+
+    function readEventsFromForm({ validate = false } = {}) {
+      const rows = Array.from(document.querySelectorAll('.read-event-row'));
+      const events = [];
+      rows.forEach((row, index) => {
+        const startedOn = row.querySelector('[data-read-started]').value;
+        const finishedOn = row.querySelector('[data-read-finished]').value;
+        if (!startedOn && !finishedOn) return;
+        if (validate && !finishedOn) {
+          throw new Error(`Read period ${index + 1} needs a finish date.`);
+        }
+        if (validate && startedOn && finishedOn && startedOn > finishedOn) {
+          throw new Error(`Read period ${index + 1} starts after it finishes.`);
+        }
+        events.push({ started_on: startedOn || null, finished_on: finishedOn || '' });
+      });
+      return events;
+    }
+
+    function readEventsForDisplay() {
+      try {
+        return readEventsFromForm({ validate: false });
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function renderReadEvents(events = []) {
+      const list = document.getElementById('read-history-list');
+      const normalized = events.length
+        ? events
+        : [{ started_on: '', finished_on: '' }];
+      list.innerHTML = normalized.map(event => `
+        <div class="read-event-row">
+          <label class="read-event-field">
+            <span>Start</span>
+            <input type="date" data-read-started value="${escAttr(event.started_on || '')}">
+          </label>
+          <label class="read-event-field">
+            <span>Finish *</span>
+            <input type="date" data-read-finished value="${escAttr(event.finished_on || '')}">
+          </label>
+          <button type="button" class="read-event-remove" data-remove-read-event>Remove</button>
+        </div>
+      `).join('');
+    }
+
+    function initialReadEvents(book) {
+      const events = Array.isArray(book.read_events) ? book.read_events : [];
+      if (events.length) {
+        return events.map(event => ({
+          started_on: event.started_on || '',
+          finished_on: event.finished_on || '',
+        }));
+      }
+      return book.date_read ? [{ started_on: '', finished_on: book.date_read }] : [];
+    }
+
     function coverSrcFromState(state) {
       if (state.cover_url) return state.cover_url;
       if (state.isbn13) return `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(state.isbn13)}-L.jpg?default=false`;
@@ -1275,7 +1404,7 @@
         my_rating: document.getElementById('my_rating').value,
         isbn13: document.getElementById('isbn13').value,
         pages: document.getElementById('pages').value,
-        date_read: document.getElementById('date_read').value,
+        read_events: readEventsForDisplay(),
         date_added: document.getElementById('date_added').value,
         cover_url: document.getElementById('cover_url').value,
         my_review: document.getElementById('my_review').value,
@@ -1293,7 +1422,7 @@
         tags: dedupeTags(tagState.selected, true),
         isbn13: values.isbn13.trim(),
         pages: values.pages.trim(),
-        date_read: values.date_read,
+        read_events: values.read_events,
         date_added: values.date_added,
         cover_url: values.cover_url.trim(),
         my_review: values.my_review,
@@ -1337,7 +1466,7 @@
             my_rating: String(currentBook?.my_rating || 0),
             isbn13: currentBook?.isbn13 || '',
             pages: currentBook?.pages || '',
-            date_read: currentBook?.date_read || '',
+            read_events: initialReadEvents(currentBook || {}),
             cover_url: currentBook?.cover_url || '',
           }
         : getFormValues();
@@ -1356,7 +1485,8 @@
           : `<span class="meta-pill">${escHtml(ratingLabel(rating))}</span>`
       );
 
-      if (values.date_read) summaryParts.push(`<span class="meta-pill">Finished ${escHtml(formatDate(values.date_read))}</span>`);
+      const latestFinished = latestFinishedOn(values.read_events);
+      if (latestFinished) summaryParts.push(`<span class="meta-pill">Finished ${escHtml(formatDate(latestFinished))}</span>`);
       if (values.pages) summaryParts.push(`<span class="meta-pill">${escHtml(String(values.pages))} pages</span>`);
       if (currentBook && typeof currentBook.note_count === 'number') {
         summaryParts.push(`<span class="meta-pill">${currentBook.note_count} note${currentBook.note_count === 1 ? '' : 's'}</span>`);
@@ -1569,7 +1699,7 @@
     function updateShelfPriority() {
       const isRead = document.getElementById('exclusive_shelf').value === 'read';
       document.getElementById('rating-card').classList.toggle('priority', isRead);
-      document.getElementById('date-read-card').classList.toggle('priority', isRead);
+      document.getElementById('read-history-card').classList.toggle('priority', isRead);
       document.getElementById('read-priority-note').classList.toggle('hidden', !isRead);
     }
 
@@ -1586,11 +1716,11 @@
       document.getElementById('my_rating').value = String(book.my_rating || 0);
       document.getElementById('isbn13').value = book.isbn13 || '';
       document.getElementById('pages').value = book.pages || '';
-      document.getElementById('date_read').value = book.date_read || '';
       document.getElementById('date_added').value = book.date_added || '';
       document.getElementById('cover_url').value = book.cover_url || '';
       document.getElementById('my_review').value = book.my_review || '';
       document.getElementById('google_books_id').value = book.google_books_id || '';
+      renderReadEvents(initialReadEvents(book));
       setSelectedTags(book.shelves || []);
       updateReviewStats();
       updateShelfPriority();
@@ -1621,7 +1751,7 @@
         shelves: buildSubmittedShelves(values.exclusive_shelf),
         isbn13: values.isbn13.trim() || null,
         pages: values.pages.trim() ? Number(values.pages) : null,
-        date_read: values.date_read || null,
+        read_events: readEventsFromForm({ validate: true }),
         date_added: dateAdded,
         cover_url: values.cover_url.trim() || null,
         my_review: values.my_review.trim() ? values.my_review : null,
@@ -1655,7 +1785,13 @@
         return;
       }
 
-      const body = buildRequestBody();
+      let body;
+      try {
+        body = buildRequestBody();
+      } catch (err) {
+        setMessage(err.message, 'error');
+        return;
+      }
       if (!body.title || !body.author) {
         setMessage('Title and author are required.', 'error');
         return;
@@ -1723,6 +1859,25 @@
       renderTagSuggestions();
     });
     document.getElementById('details-panel').addEventListener('toggle', updateDetailsSummary);
+
+    document.getElementById('add-read-event-btn').addEventListener('click', () => {
+      const events = readEventsFromForm({ validate: false });
+      events.push({ started_on: '', finished_on: '' });
+      renderReadEvents(events);
+      renderHero();
+      updateDirtyState();
+    });
+
+    document.getElementById('read-history-list').addEventListener('click', e => {
+      const btn = e.target.closest('[data-remove-read-event]');
+      if (!btn) return;
+      btn.closest('.read-event-row').remove();
+      if (!document.querySelectorAll('.read-event-row').length) {
+        renderReadEvents([]);
+      }
+      renderHero();
+      updateDirtyState();
+    });
 
     document.getElementById('add-tag-btn').addEventListener('click', () => {
       addTag(document.getElementById('tag-input').value);

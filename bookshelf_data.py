@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -61,6 +62,8 @@ def default_books_payload() -> dict[str, Any]:
             "currently_reading_count": 0,
             "avg_my_rating": 0.0,
             "books_this_year": 0,
+            "read_completions": 0,
+            "read_completions_this_year": 0,
             "top_authors": [],
         },
     }
@@ -129,6 +132,14 @@ def normalize_book_key(title: str, author: str) -> tuple[str, str]:
 
 
 def _book_hash_entry(book: dict[str, Any], shelf_key: str) -> list[Any]:
+    read_events = [
+        [
+            (event.get("started_on") or "").strip(),
+            (event.get("finished_on") or "").strip(),
+        ]
+        for event in (book.get("read_events") or [])
+        if isinstance(event, dict)
+    ]
     return [
         shelf_key,
         (book.get("title") or "").strip(),
@@ -136,6 +147,7 @@ def _book_hash_entry(book: dict[str, Any], shelf_key: str) -> list[Any]:
         int(book.get("my_rating") or 0),
         (book.get("my_review") or "").strip(),
         (book.get("date_read") or "").strip(),
+        sorted(read_events),
         (book.get("date_added") or "").strip(),
         sorted(str(shelf).strip() for shelf in (book.get("shelves") or []) if str(shelf).strip()),
     ]
@@ -303,7 +315,35 @@ class BookshelfStore:
         self.llm_cache_file = JsonFileCache(llm_cache_path, default_llm_cache)
 
     def books(self) -> dict[str, Any]:
-        return self.books_file.read()
+        payload = self.books_file.read()
+        for shelf in payload.get("books", {}).values():
+            if not isinstance(shelf, list):
+                continue
+            for book in shelf:
+                if not isinstance(book, dict):
+                    continue
+                if not isinstance(book.get("read_events"), list):
+                    book["read_events"] = (
+                        [{"id": None, "started_on": "", "finished_on": book.get("date_read") or ""}]
+                        if book.get("date_read")
+                        else []
+                    )
+
+        read_books = payload.get("books", {}).get("read", [])
+        if isinstance(read_books, list):
+            stats = payload.setdefault("stats", {})
+            current_year = datetime.now().year
+            events = [
+                event
+                for book in read_books
+                for event in (book.get("read_events") or [])
+                if isinstance(event, dict) and event.get("finished_on")
+            ]
+            stats["read_completions"] = len(events)
+            stats["read_completions_this_year"] = sum(
+                1 for event in events if str(event.get("finished_on") or "").startswith(str(current_year))
+            )
+        return payload
 
     def llm_cache(self) -> dict[str, Any]:
         return self.llm_cache_file.read()
@@ -330,15 +370,18 @@ class BookshelfDB:
         from db import get_connection, run_migrations
 
         self.db_path = db_path
-        self._conn: sqlite3.Connection | None = None
+        self._connections: dict[int, sqlite3.Connection] = {}
         self._get_connection = get_connection
         self._run_migrations = run_migrations
 
     def conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = self._get_connection(self.db_path)
-            self._run_migrations(self._conn)
-        return self._conn
+        thread_id = threading.get_ident()
+        conn = self._connections.get(thread_id)
+        if conn is None:
+            conn = self._get_connection(self.db_path)
+            self._run_migrations(conn)
+            self._connections[thread_id] = conn
+        return conn
 
     def _row_to_book(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert a DB row to the dict format matching books.json entries."""
@@ -360,6 +403,13 @@ class BookshelfDB:
         d["date_added"] = d.get("date_added") or ""
         d["goodreads_id"] = d.get("goodreads_id") or ""
         d["my_rating"] = d.get("my_rating") or 0
+        d["read_events"] = []
+        if d.get("id"):
+            from db import list_read_events
+
+            d["read_events"] = list_read_events(self.conn(), d["id"])
+        if not d["read_events"] and d["date_read"]:
+            d["read_events"] = [{"id": None, "started_on": "", "finished_on": d["date_read"]}]
 
         return d
 
@@ -390,6 +440,16 @@ class BookshelfDB:
             1 for b in read_books
             if (b.get("date_read") or "").startswith(str(current_year))
         )
+        read_events = [
+            event
+            for book in read_books
+            for event in (book.get("read_events") or [])
+            if isinstance(event, dict) and event.get("finished_on")
+        ]
+        completions_this_year = sum(
+            1 for event in read_events
+            if str(event.get("finished_on") or "").startswith(str(current_year))
+        )
         top_authors = [
             {"author": a, "count": c}
             for a, c in Counter(
@@ -399,6 +459,8 @@ class BookshelfDB:
         return {
             "total_read": len(read_books),
             "books_this_year": this_year,
+            "read_completions": len(read_events),
+            "read_completions_this_year": completions_this_year,
             "avg_my_rating": avg,
             "top_authors": top_authors,
             "total_to_read": to_read_count,

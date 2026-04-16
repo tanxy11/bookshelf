@@ -31,6 +31,7 @@ from db import (
     insert_book,
     insert_book_suggestion,
     list_activity_rows,
+    replace_read_events,
     run_migrations,
     set_llm_cache_value,
     update_book,
@@ -264,20 +265,21 @@ class DbSchemaTests(unittest.TestCase):
         self.assertIn("activity_log", tables)
         self.assertIn("book_suggestions", tables)
         self.assertIn("capture_events", tables)
+        self.assertIn("book_read_events", tables)
         self.assertIn("schema_version", tables)
         conn.close()
 
-    def test_schema_version_is_8(self):
+    def test_schema_version_is_9(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 8)
+        self.assertEqual(get_schema_version(conn), 9)
         conn.close()
 
     def test_migrations_are_idempotent(self):
         conn = get_connection(self.db_path)
         run_migrations(conn)
         run_migrations(conn)
-        self.assertEqual(get_schema_version(conn), 8)
+        self.assertEqual(get_schema_version(conn), 9)
         conn.close()
 
     def test_existing_notes_table_upgrades_cleanly(self):
@@ -330,17 +332,56 @@ class DbSchemaTests(unittest.TestCase):
             for row in conn.execute("PRAGMA table_info(book_suggestions)").fetchall()
         }
 
-        self.assertEqual(applied, 7)
-        self.assertEqual(get_schema_version(conn), 8)
+        self.assertEqual(applied, 8)
+        self.assertEqual(get_schema_version(conn), 9)
         self.assertIn("notes", tables)
         self.assertIn("activity_log", tables)
         self.assertIn("book_suggestions", tables)
         self.assertIn("capture_events", tables)
+        self.assertIn("book_read_events", tables)
         self.assertIn("connected_label", note_columns)
         self.assertIn("connected_url", note_columns)
         self.assertIn("client_ip_hash", suggestion_columns)
         self.assertIn("user_agent", suggestion_columns)
         self.assertIn("content_fingerprint", suggestion_columns)
+        conn.close()
+
+    def test_read_events_migration_backfills_existing_date_read(self):
+        conn = get_connection(self.db_path)
+        db_module._migration_v1(conn)
+        conn.execute(
+            """INSERT INTO books
+               (title, author, date_read, date_added, exclusive_shelf)
+               VALUES (?, ?, ?, ?, ?)""",
+            ("Reread Book", "Author", "2020-05-01", "2020-04-01", "read"),
+        )
+        conn.execute(
+            """INSERT INTO books
+               (title, author, date_read, date_added, exclusive_shelf)
+               VALUES (?, ?, ?, ?, ?)""",
+            ("No Date", "Author", None, "2020-04-01", "read"),
+        )
+        conn.execute(
+            """INSERT INTO books
+               (title, author, date_read, date_added, exclusive_shelf)
+               VALUES (?, ?, ?, ?, ?)""",
+            ("Blank Date", "Author", "", "2020-04-01", "read"),
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            )"""
+        )
+        conn.execute("INSERT INTO schema_version (version) VALUES (1)")
+        conn.commit()
+
+        run_migrations(conn)
+        rows = conn.execute(
+            "SELECT book_id, finished_on FROM book_read_events ORDER BY book_id"
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["finished_on"], "2020-05-01")
         conn.close()
 
     def test_insert_and_list_activity_rows(self):
@@ -521,6 +562,8 @@ class BookshelfDBTests(unittest.TestCase):
         self.assertEqual(stats["total_to_read"], 1)
         self.assertEqual(stats["currently_reading_count"], 1)
         self.assertEqual(stats["avg_my_rating"], 4.0)
+        self.assertEqual(stats["read_completions"], 2)
+        self.assertEqual(stats["read_completions_this_year"], 1)
 
     def test_books_read_sorted_by_date_read_desc(self):
         books = self.db_store.books()
@@ -545,8 +588,35 @@ class BookshelfDBTests(unittest.TestCase):
         # Empty strings not None
         self.assertIsInstance(book.get("isbn13"), str)
         self.assertIsInstance(book.get("date_read"), str)
+        self.assertIsInstance(book.get("read_events"), list)
         # Shelves should be a list
         self.assertIsInstance(book["shelves"], list)
+
+    def test_read_events_are_returned_and_date_read_is_latest_finish(self):
+        conn = get_connection(self.db_path)
+        replace_read_events(conn, 2, [
+            {"started_on": "2021-01-01", "finished_on": "2021-02-01"},
+            {"started_on": "2026-02-01", "finished_on": "2026-03-05"},
+        ])
+        conn.commit()
+        conn.close()
+
+        books = self.db_store.books()
+        read = books["books"]["read"]
+        self.assertEqual(read[0]["title"], "1984")
+        self.assertEqual(read[0]["date_read"], "2026-03-05")
+        self.assertEqual([event["finished_on"] for event in read[0]["read_events"]], [
+            "2026-03-05",
+            "2021-02-01",
+        ])
+
+    def test_replace_read_events_validates_finish_and_start_order(self):
+        conn = get_connection(self.db_path)
+        with self.assertRaises(ValueError):
+            replace_read_events(conn, 1, [{"started_on": "2026-01-01"}])
+        with self.assertRaises(ValueError):
+            replace_read_events(conn, 1, [{"started_on": "2026-02-01", "finished_on": "2026-01-01"}])
+        conn.close()
 
     def test_book_empty_review_is_empty_string(self):
         books = self.db_store.books()
@@ -727,6 +797,7 @@ class ApiSqliteTests(unittest.TestCase):
         data = resp.json()
         self.assertEqual(len(data["books"]["read"]), 3)
         self.assertEqual(data["books"]["read"][0]["title"], "Dune")
+        self.assertEqual(data["books"]["read"][0]["read_events"][0]["finished_on"], "2026-01-15")
 
     def test_single_book_endpoint(self):
         resp = self.client.get("/api/books/1")
@@ -735,6 +806,7 @@ class ApiSqliteTests(unittest.TestCase):
         self.assertEqual(data["title"], "Dune")
         self.assertEqual(data["author"], "Frank Herbert")
         self.assertEqual(data["note_count"], 0)
+        self.assertEqual(data["read_events"][0]["finished_on"], "2026-01-15")
 
     def test_single_book_endpoint_not_found(self):
         resp = self.client.get("/api/books/99999")
@@ -853,6 +925,81 @@ class ApiSqliteTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["title"], "New Title")
+
+    def test_create_book_accepts_read_events_and_sets_latest_date_read(self):
+        resp = self.client.post(
+            "/api/books",
+            json={
+                "title": "Reread Book",
+                "author": "Author",
+                "exclusive_shelf": "read",
+                "read_events": [
+                    {"started_on": "2020-01-01", "finished_on": "2020-02-01"},
+                    {"started_on": "2026-01-01", "finished_on": "2026-02-01"},
+                ],
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertEqual(data["date_read"], "2026-02-01")
+        self.assertEqual([event["finished_on"] for event in data["read_events"]], [
+            "2026-02-01",
+            "2020-02-01",
+        ])
+
+    def test_update_book_replaces_read_events_and_resyncs_latest_date(self):
+        resp = self.client.post(
+            "/api/books",
+            json={
+                "title": "Eventful Book",
+                "author": "Author",
+                "exclusive_shelf": "read",
+                "date_read": "2020-01-01",
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = resp.json()["id"]
+
+        resp = self.client.put(
+            f"/api/books/{book_id}",
+            json={
+                "read_events": [
+                    {"started_on": "2025-12-01", "finished_on": "2026-01-15"},
+                    {"started_on": None, "finished_on": "2021-05-01"},
+                ],
+            },
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["date_read"], "2026-01-15")
+        self.assertEqual([event["finished_on"] for event in data["read_events"]], [
+            "2026-01-15",
+            "2021-05-01",
+        ])
+
+    def test_update_book_rejects_invalid_read_events(self):
+        resp = self.client.post(
+            "/api/books",
+            json={"title": "Bad Events", "author": "Author", "exclusive_shelf": "read"},
+            headers=TEST_AUTH_HEADER,
+        )
+        book_id = resp.json()["id"]
+
+        missing_finish = self.client.put(
+            f"/api/books/{book_id}",
+            json={"read_events": [{"started_on": "2026-01-01"}]},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(missing_finish.status_code, 422)
+
+        inverted = self.client.put(
+            f"/api/books/{book_id}",
+            json={"read_events": [{"started_on": "2026-02-01", "finished_on": "2026-01-01"}]},
+            headers=TEST_AUTH_HEADER,
+        )
+        self.assertEqual(inverted.status_code, 422)
 
     def test_update_book_logs_when_entering_currently_reading_or_read(self):
         resp = self.client.post(
