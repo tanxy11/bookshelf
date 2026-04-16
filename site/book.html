@@ -121,6 +121,20 @@
       font-family: 'Cormorant Garamond', serif; font-size: 1.58rem; font-weight: 600;
       margin-bottom: 14px; color: rgba(52, 41, 34, 0.94);
     }
+    .read-history-list {
+      display: grid; gap: 9px;
+    }
+    .read-history-item {
+      padding: 11px 13px; border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255, 252, 247, 0.72);
+      color: rgba(52, 41, 34, 0.94);
+      font-size: .95rem;
+    }
+    .read-history-item strong {
+      color: var(--accent-deep);
+      font-weight: 600;
+    }
     .review-text {
       line-height: 1.5;
       font-size: 1.03rem;
@@ -358,6 +372,10 @@
   <div class="loading" id="loading">Loading book...</div>
   <div id="content" style="display:none">
     <div class="hero" id="hero"></div>
+    <div class="section" id="read-history-section" style="display:none">
+      <h2 class="section-title">Read history</h2>
+      <div class="read-history-list" id="read-history-list"></div>
+    </div>
     <div class="section" id="review-section" style="display:none">
       <h2 class="section-title">Review</h2>
       <div class="review-text" id="review-text"></div>
@@ -407,6 +425,12 @@ function formatDate(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function formatFullDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 function formatNoteDate(isoStr) {
@@ -463,6 +487,21 @@ function renderReview(book) {
     document.getElementById('review-text').textContent = review;
   }
   document.getElementById('review-section').style.display = '';
+}
+
+function renderReadHistory(book) {
+  const events = Array.isArray(book.read_events) ? book.read_events : [];
+  const finishedEvents = events.filter(event => event && event.finished_on);
+  if (!finishedEvents.length) return;
+
+  document.getElementById('read-history-list').innerHTML = finishedEvents.map(event => {
+    const finished = `<strong>Finished</strong> ${escHtml(formatFullDate(event.finished_on))}`;
+    if (!event.started_on) {
+      return `<div class="read-history-item">${finished}</div>`;
+    }
+    return `<div class="read-history-item"><strong>Started</strong> ${escHtml(formatFullDate(event.started_on))} &middot; ${finished}</div>`;
+  }).join('');
+  document.getElementById('read-history-section').style.display = '';
 }
 
 // ── Notes rendering ─────────────────────────────────────────────────────────
@@ -1045,6 +1084,7 @@ async function loadPage() {
     }
 
     renderHero(book);
+    renderReadHistory(book);
     renderReview(book);
     renderNotes(notes);
     renderAddNoteForm();

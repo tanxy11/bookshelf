@@ -451,7 +451,7 @@ document.getElementById('add-form').addEventListener('submit', async e => {
 
   if (isbn13) body.isbn13 = isbn13;
   if (pages) body.pages = parseInt(pages);
-  if (date_read) body.date_read = date_read;
+  if (date_read) body.read_events = [{ started_on: null, finished_on: date_read }];
   if (date_added) body.date_added = date_added;
   if (cover_url) body.cover_url = cover_url;
   if (my_review) body.my_review = my_review;

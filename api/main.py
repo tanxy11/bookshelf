@@ -363,6 +363,8 @@ async def create_book(request: Request) -> dict:
         "google_books_id": body.get("google_books_id") or None,
         "goodreads_id": body.get("goodreads_id") or None,
     }
+    if "read_events" in body:
+        book_data["read_events"] = body.get("read_events")
 
     conn = store.conn()
     try:
@@ -372,6 +374,9 @@ async def create_book(request: Request) -> dict:
             raise HTTPException(status_code=500, detail="Book was created but could not be loaded.")
         _log_book_activity(conn, event_type=_created_book_activity_type(shelf), book=book)
         conn.commit()
+    except ValueError as exc:
+        conn.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:
         conn.rollback()
         raise
@@ -385,7 +390,7 @@ async def update_book_endpoint(book_id: int, request: Request) -> dict:
     if not USE_SQLITE:
         raise HTTPException(status_code=400, detail="CRUD requires SQLite backend.")
 
-    from db import get_book_by_id, update_book
+    from db import get_book_by_id, replace_read_events, update_book
 
     existing = get_book_by_id(store.conn(), book_id)
     if existing is None:
@@ -397,11 +402,21 @@ async def update_book_endpoint(book_id: int, request: Request) -> dict:
 
     if "shelves" in body:
         body["shelves"] = _normalize_shelves(body.get("shelves"))
+    has_read_events = "read_events" in body
+    read_events = body.pop("read_events", None)
+    if has_read_events:
+        body.pop("date_read", None)
+    elif "date_read" in body:
+        # Read history is now the source of truth for updates. Keeping this out
+        # prevents stale single-date clients from desynchronizing the cache field.
+        body.pop("date_read", None)
 
     conn = store.conn()
     try:
         if not update_book(conn, book_id, body):
             raise HTTPException(status_code=404, detail="Book not found.")
+        if has_read_events:
+            replace_read_events(conn, book_id, read_events)
         updated = get_book_by_id(conn, book_id)
         if updated is None:
             raise HTTPException(status_code=404, detail="Book not found.")
@@ -413,6 +428,9 @@ async def update_book_endpoint(book_id: int, request: Request) -> dict:
             book=updated,
         )
         conn.commit()
+    except ValueError as exc:
+        conn.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:
         conn.rollback()
         raise
