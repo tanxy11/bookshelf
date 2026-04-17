@@ -545,23 +545,35 @@ function renderReview(book) {
 
 function renderReadHistory(book) {
   const events = Array.isArray(book.read_events) ? book.read_events : [];
-  const finishedEvents = events.filter(event => event && event.finished_on);
-  if (!finishedEvents.length) return;
+  const historyEvents = events.filter(event => event && (event.started_on || event.finished_on));
+  if (!historyEvents.length) return;
 
-  document.getElementById('read-history-list').innerHTML = finishedEvents.map(event => {
-    const finished = `
-      <span class="read-history-label">Finished</span>
-      <span class="read-history-date">${escHtml(formatFullDate(event.finished_on))}</span>
-    `;
+  document.getElementById('read-history-list').innerHTML = historyEvents.map(event => {
+    if (event.started_on && !event.finished_on) {
+      return `
+        <div class="read-history-item">
+          <span class="read-history-label">Started</span>
+          <span class="read-history-date">${escHtml(formatFullDate(event.started_on))}</span>
+          <span class="read-history-separator">&rarr;</span>
+          <span class="read-history-label">In progress</span>
+        </div>
+      `;
+    }
     if (!event.started_on) {
-      return `<div class="read-history-item">${finished}</div>`;
+      return `
+        <div class="read-history-item">
+          <span class="read-history-label">Finished</span>
+          <span class="read-history-date">${escHtml(formatFullDate(event.finished_on))}</span>
+        </div>
+      `;
     }
     return `
       <div class="read-history-item">
         <span class="read-history-label">Started</span>
         <span class="read-history-date">${escHtml(formatFullDate(event.started_on))}</span>
         <span class="read-history-separator">&rarr;</span>
-        ${finished}
+        <span class="read-history-label">Finished</span>
+        <span class="read-history-date">${escHtml(formatFullDate(event.finished_on))}</span>
       </div>
     `;
   }).join('');

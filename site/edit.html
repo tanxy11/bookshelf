@@ -1071,7 +1071,7 @@
           <div class="read-history-toolbar">
             <div>
               <span class="field-label">Read History</span>
-              <p class="field-help">Finish date is required for each completed read. Start date is optional.</p>
+              <p class="field-help">Leave Finish blank while a read is in progress. Completed reads still use the latest finish date.</p>
             </div>
             <button type="button" class="ghost-btn small" id="add-read-event-btn">Add read period</button>
           </div>
@@ -1328,13 +1328,10 @@
         const startedOn = row.querySelector('[data-read-started]').value;
         const finishedOn = row.querySelector('[data-read-finished]').value;
         if (!startedOn && !finishedOn) return;
-        if (validate && !finishedOn) {
-          throw new Error(`Read period ${index + 1} needs a finish date.`);
-        }
         if (validate && startedOn && finishedOn && startedOn > finishedOn) {
           throw new Error(`Read period ${index + 1} starts after it finishes.`);
         }
-        events.push({ started_on: startedOn || null, finished_on: finishedOn || '' });
+        events.push({ started_on: startedOn || null, finished_on: finishedOn || null });
       });
       return events;
     }
@@ -1359,7 +1356,7 @@
             <input type="date" data-read-started value="${escAttr(event.started_on || '')}">
           </label>
           <label class="read-event-field">
-            <span>Finish *</span>
+            <span>Finish</span>
             <input type="date" data-read-finished value="${escAttr(event.finished_on || '')}">
           </label>
           <button type="button" class="read-event-remove" data-remove-read-event>Remove</button>
