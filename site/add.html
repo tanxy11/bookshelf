@@ -196,9 +196,15 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label for="date_read">Date Read</label>
+          <label for="date_started">Start Date</label>
+          <input type="date" id="date_started" name="date_started">
+        </div>
+        <div class="form-group">
+          <label for="date_read">Finish Date</label>
           <input type="date" id="date_read" name="date_read">
         </div>
+      </div>
+      <div class="form-row">
         <div class="form-group">
           <label for="date_added">Date Added</label>
           <input type="date" id="date_added" name="date_added">
@@ -443,15 +449,22 @@ document.getElementById('add-form').addEventListener('submit', async e => {
   // Optional expanded fields
   const isbn13 = document.getElementById('isbn13').value.trim();
   const pages = document.getElementById('pages').value.trim();
+  const date_started = document.getElementById('date_started').value;
   const date_read = document.getElementById('date_read').value;
   const date_added = document.getElementById('date_added').value;
   const cover_url = document.getElementById('cover_url').value.trim();
   const my_review = document.getElementById('my_review').value.trim();
   const google_books_id = document.getElementById('google_books_id').value.trim();
 
+  if (date_started && date_read && date_started > date_read) {
+    btn.disabled = false;
+    btn.textContent = 'Add Book';
+    return showMessage('Start date cannot be after finish date.', 'error');
+  }
+
   if (isbn13) body.isbn13 = isbn13;
   if (pages) body.pages = parseInt(pages);
-  if (date_read) body.read_events = [{ started_on: null, finished_on: date_read }];
+  if (date_started || date_read) body.read_events = [{ started_on: date_started || null, finished_on: date_read || null }];
   if (date_added) body.date_added = date_added;
   if (cover_url) body.cover_url = cover_url;
   if (my_review) body.my_review = my_review;

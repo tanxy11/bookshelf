@@ -273,6 +273,65 @@ def _migration_v9(conn: sqlite3.Connection) -> None:
     )
 
 
+_BOOK_READ_EVENTS_SCHEMA_V10 = """
+CREATE TABLE IF NOT EXISTS book_read_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL,
+    started_on TEXT,
+    finished_on TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    CHECK (
+        finished_on IS NULL
+        OR finished_on = ''
+        OR started_on IS NULL
+        OR started_on = ''
+        OR started_on <= finished_on
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_book_read_events_book_finished
+    ON book_read_events(book_id, finished_on DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_book_read_events_finished
+    ON book_read_events(finished_on DESC);
+"""
+
+
+def _read_events_finished_on_is_required(conn: sqlite3.Connection) -> bool:
+    row = next(
+        (
+            column
+            for column in conn.execute("PRAGMA table_info(book_read_events)").fetchall()
+            if column["name"] == "finished_on"
+        ),
+        None,
+    )
+    return bool(row and row["notnull"])
+
+
+def _migration_v10(conn: sqlite3.Connection) -> None:
+    if not _read_events_finished_on_is_required(conn):
+        conn.executescript(_BOOK_READ_EVENTS_SCHEMA_V10)
+        return
+
+    conn.executescript(
+        """
+        DROP INDEX IF EXISTS idx_book_read_events_book_finished;
+        DROP INDEX IF EXISTS idx_book_read_events_finished;
+        ALTER TABLE book_read_events RENAME TO book_read_events_v9;
+        """
+    )
+    conn.executescript(_BOOK_READ_EVENTS_SCHEMA_V10)
+    conn.execute(
+        """INSERT INTO book_read_events
+           (id, book_id, started_on, finished_on, created_at, updated_at)
+           SELECT id, book_id, started_on, finished_on, created_at, updated_at
+           FROM book_read_events_v9"""
+    )
+    conn.execute("DROP TABLE book_read_events_v9")
+
+
 MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _migration_v1),
     (2, _migration_v2),
@@ -283,6 +342,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (7, _migration_v7),
     (8, _migration_v8),
     (9, _migration_v9),
+    (10, _migration_v10),
 ]
 
 
@@ -396,8 +456,9 @@ def normalize_read_events(raw_events: Any) -> list[dict[str, str | None]]:
         finished_on = _normalize_date_value(
             raw_event.get("finished_on"),
             f"read_events[{idx}].finished_on",
-            required=True,
         )
+        if not started_on and not finished_on:
+            continue
         if started_on and finished_on and started_on > finished_on:
             raise ValueError(f"read_events[{idx}].started_on cannot be after finished_on.")
         normalized.append({"started_on": started_on, "finished_on": finished_on})
@@ -410,7 +471,7 @@ def list_read_events(conn: sqlite3.Connection, book_id: int) -> list[dict[str, A
         """SELECT id, book_id, started_on, finished_on, created_at, updated_at
            FROM book_read_events
            WHERE book_id = ?
-           ORDER BY finished_on DESC, id DESC""",
+           ORDER BY COALESCE(NULLIF(finished_on, ''), NULLIF(started_on, '')) DESC, id DESC""",
         (book_id,),
     ).fetchall()
     events: list[dict[str, Any]] = []
@@ -424,7 +485,7 @@ def list_read_events(conn: sqlite3.Connection, book_id: int) -> list[dict[str, A
 
 def sync_book_latest_read_date(conn: sqlite3.Connection, book_id: int) -> None:
     row = conn.execute(
-        "SELECT MAX(finished_on) AS latest FROM book_read_events WHERE book_id = ?",
+        "SELECT MAX(NULLIF(finished_on, '')) AS latest FROM book_read_events WHERE book_id = ?",
         (book_id,),
     ).fetchone()
     latest = row["latest"] if row else None
