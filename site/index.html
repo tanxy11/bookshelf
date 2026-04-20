@@ -41,7 +41,10 @@
       --radius-lg:      24px;
     }
 
-    html { scroll-behavior: smooth; }
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 82px;
+    }
 
     body {
       font-family: 'Alegreya Sans', system-ui, sans-serif;
@@ -197,6 +200,108 @@
     .hero-nav {
       width: fit-content;
       max-width: 100%;
+    }
+
+    .floating-nav-shell {
+      position: fixed;
+      top: 14px;
+      right: 24px;
+      z-index: 1100;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-10px) scale(.98);
+      transition: opacity .18s ease, transform .18s ease;
+    }
+
+    .floating-nav-shell.is-visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    body.modal-open .floating-nav-shell {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .floating-section-nav {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      gap: 0;
+      padding: 6px;
+      border: 1px solid rgba(122, 92, 62, 0.16);
+      border-radius: 999px;
+      background:
+        linear-gradient(180deg, rgba(255, 252, 247, 0.9), rgba(247, 239, 230, 0.82)),
+        rgba(255, 252, 247, 0.86);
+      box-shadow: 0 16px 42px rgba(70, 52, 35, 0.12);
+      backdrop-filter: blur(18px);
+    }
+
+    .floating-section-nav::after {
+      content: "Sections";
+      padding: 7px 11px 7px 9px;
+      border-left: 1px solid rgba(122, 92, 62, 0.12);
+      color: rgba(104, 91, 81, 0.9);
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .01em;
+      transition: opacity .16s ease, max-width .18s ease, padding .18s ease, border-color .18s ease;
+    }
+
+    .floating-section-nav a {
+      flex: 0 0 auto;
+      white-space: nowrap;
+      max-width: 0;
+      overflow: hidden;
+      padding: 7px 0;
+      border-radius: 999px;
+      color: rgba(104, 91, 81, 0.9);
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .01em;
+      opacity: 0;
+      transition: background .18s ease, color .18s ease, transform .18s ease, opacity .16s ease, max-width .18s ease, padding .18s ease;
+    }
+
+    .floating-section-nav .floating-top-link {
+      max-width: 76px;
+      padding: 7px 11px;
+      opacity: 1;
+      background: rgba(122, 92, 62, 0.08);
+      color: var(--accent-deep);
+    }
+
+    .floating-nav-shell:hover .floating-section-nav,
+    .floating-nav-shell:focus-within .floating-section-nav {
+      gap: 4px;
+    }
+
+    .floating-nav-shell:hover .floating-section-nav::after,
+    .floating-nav-shell:focus-within .floating-section-nav::after {
+      max-width: 0;
+      opacity: 0;
+      padding-left: 0;
+      padding-right: 0;
+      border-color: transparent;
+    }
+
+    .floating-nav-shell:hover .floating-section-nav a,
+    .floating-nav-shell:focus-within .floating-section-nav a {
+      max-width: 112px;
+      padding: 7px 11px;
+      opacity: 1;
+    }
+
+    .floating-section-nav a:hover,
+    .floating-section-nav a.is-active {
+      background: rgba(122, 92, 62, 0.1);
+      color: var(--accent-deep);
+      transform: translateY(-1px);
     }
 
     .activity-preview {
@@ -1712,6 +1817,40 @@
       }
       .site-title { font-size: 2.3rem; }
       nav { display: none; }
+      .floating-nav-shell {
+        top: auto;
+        bottom: 12px;
+        right: auto;
+        left: 50%;
+        width: calc(100% - 24px);
+        max-width: none;
+        transform: translate(-50%, 14px) scale(.98);
+      }
+      .floating-nav-shell.is-visible {
+        transform: translate(-50%, 0) scale(1);
+      }
+      .floating-section-nav {
+        display: flex;
+        width: 100%;
+        justify-content: flex-start;
+        gap: 4px;
+        overflow-x: auto;
+        padding: 6px;
+        border-radius: 20px;
+        scrollbar-width: none;
+      }
+      .floating-section-nav::after {
+        display: none;
+      }
+      .floating-section-nav::-webkit-scrollbar {
+        display: none;
+      }
+      .floating-section-nav a {
+        max-width: none;
+        opacity: 1;
+        padding: 7px 10px;
+        font-size: .76rem;
+      }
       .activity-preview {
         width: 100%;
         padding-top: 14px;
@@ -1934,7 +2073,7 @@
     }
   </style>
 </head>
-<body>
+<body id="top">
 <div class="staging-banner hidden" id="staging-banner"></div>
 
 <div class="auth-bar" id="auth-bar">
@@ -1942,6 +2081,18 @@
   <input type="password" id="auth-token-input" placeholder="Bearer token…">
   <button id="auth-login-btn">Login</button>
   <button id="auth-logout-btn" class="hidden" style="background:transparent;color:var(--muted)">Logout</button>
+</div>
+
+<div class="floating-nav-shell" id="floating-nav-shell" aria-hidden="true">
+  <nav class="floating-section-nav" aria-label="Quick section navigation">
+    <a class="floating-top-link" href="#top" data-floating-section="top">Top ↑</a>
+    <a href="#reading-weeks" data-floating-section="reading-weeks" aria-label="Life in weeks">Life</a>
+    <a href="#taste-profile" data-floating-section="taste-profile" aria-label="Taste profile">Taste</a>
+    <a href="#read" data-floating-section="read" aria-label="Books read">Read</a>
+    <a href="#currently-reading" data-floating-section="currently-reading">Reading</a>
+    <a href="#to-read" data-floating-section="to-read">Want</a>
+    <a href="#recommendations" data-floating-section="recommendations" aria-label="AI picks">AI</a>
+  </nav>
 </div>
 
 <header>
@@ -2244,6 +2395,61 @@ const LLM_TARGET_CONFIG = {
 };
 const LLM_TARGET_KEYS = Object.keys(LLM_TARGET_CONFIG);
 const LLM_RECOMMENDATION_TARGETS = ['opus', 'gpt45', 'gemini'];
+const FLOATING_NAV_SECTIONS = [
+  'reading-weeks',
+  'taste-profile',
+  'read',
+  'currently-reading',
+  'to-read',
+  'recommendations',
+];
+
+function setFloatingNavActive(activeId) {
+  document.querySelectorAll('[data-floating-section]').forEach(link => {
+    link.classList.toggle('is-active', link.dataset.floatingSection === activeId);
+  });
+}
+
+function updateFloatingNav() {
+  const shell = document.getElementById('floating-nav-shell');
+  const header = document.querySelector('header');
+  if (!shell || !header) return;
+
+  const showAfter = header.offsetTop + header.offsetHeight - 36;
+  const isVisible = window.scrollY > showAfter;
+  shell.classList.toggle('is-visible', isVisible);
+  shell.setAttribute('aria-hidden', String(!isVisible));
+
+  if (!isVisible) {
+    setFloatingNavActive('top');
+    return;
+  }
+
+  const activationLine = window.innerHeight < 720 ? window.innerHeight * 0.42 : 150;
+  let activeId = 'top';
+  FLOATING_NAV_SECTIONS.forEach(id => {
+    const section = document.getElementById(id);
+    if (!section || section.classList.contains('hidden')) return;
+    if (section.getBoundingClientRect().top <= activationLine) activeId = id;
+  });
+  setFloatingNavActive(activeId);
+}
+
+function setupFloatingNav() {
+  let ticking = false;
+  const requestUpdate = () => {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(() => {
+      updateFloatingNav();
+      ticking = false;
+    });
+  };
+
+  window.addEventListener('scroll', requestUpdate, { passive: true });
+  window.addEventListener('resize', requestUpdate);
+  updateFloatingNav();
+}
 
 function stars(n, max = 5) {
   let s = '';
@@ -3250,6 +3456,7 @@ async function load() {
   syncLlmAdminControls();
 
   updateFooter(booksGeneratedAt);
+  updateFloatingNav();
 }
 
 document.getElementById('sort-pills').addEventListener('click', e => {
@@ -4029,6 +4236,7 @@ function updateFooter(generated_at) {
     `${source}${booksDate ? ' · Last updated ' + booksDate : ''}${llmDate ? ' · LLM cache ' + llmDate : ''}`;
 }
 
+setupFloatingNav();
 load();
 </script>
 </body>
