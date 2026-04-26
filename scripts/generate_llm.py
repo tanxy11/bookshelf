@@ -81,6 +81,15 @@ PROVIDER_ALIASES = {
     "gpt45": "gpt45",
     "gemini": "gemini",
 }
+TASTE_PROFILE_PROVIDER_ALIASES = {
+    "claude": "opus",
+    "anthropic": "opus",
+    "opus": "opus",
+    "chatgpt": "gpt45",
+    "openai": "gpt45",
+    "gpt": "gpt45",
+    "gpt45": "gpt45",
+}
 
 
 def _selected_targets(
@@ -178,6 +187,14 @@ def _debug_payload_excerpt(payload: Any) -> str:
         return _debug_excerpt(repr(payload))
 
 
+def _http_error_excerpt(exc: httpx.HTTPStatusError) -> str:
+    try:
+        payload = exc.response.json()
+    except Exception:  # noqa: BLE001
+        return _debug_excerpt(exc.response.text)
+    return _debug_payload_excerpt(payload)
+
+
 def _provider_debug_info(
     model_name: str,
     response_payload: dict[str, Any],
@@ -198,8 +215,13 @@ def _provider_debug_info(
     return debug
 
 
-def build_mock_taste_profile() -> dict[str, Any]:
+def build_mock_taste_profile(
+    model_name: str = ANTHROPIC_MODEL,
+    provider: str = "opus",
+) -> dict[str, Any]:
     return {
+        "model": model_name,
+        "provider": provider,
         "summary": "[DRY RUN] Mock taste profile",
         "traits": [
             {
@@ -420,21 +442,21 @@ async def call_anthropic_json(
 async def call_openai_json(
     client: httpx.AsyncClient, api_key: str, prompt: str, max_tokens: int
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    request_payload = {
+        "model": OPENAI_MODEL,
+        "max_completion_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": "Return valid JSON only. Do not use markdown."},
+            {"role": "user", "content": prompt},
+        ],
+    }
     response = await client.post(
         OPENAI_API_URL,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
-        json={
-            "model": OPENAI_MODEL,
-            "temperature": 0.6,
-            "max_completion_tokens": max_tokens,
-            "messages": [
-                {"role": "system", "content": "Return valid JSON only. Do not use markdown."},
-                {"role": "user", "content": prompt},
-            ],
-        },
+        json=request_payload,
     )
     response.raise_for_status()
     payload = response.json()
@@ -543,6 +565,11 @@ async def with_retry(coro_factory, label: str) -> dict[str, Any]:
             f"{label} failed: {last_error}",
             debug_info=last_error.debug_info,
         ) from last_error
+    if isinstance(last_error, httpx.HTTPStatusError):
+        raise RuntimeError(
+            f"{label} failed: HTTP {last_error.response.status_code}: "
+            f"{_http_error_excerpt(last_error)}"
+        ) from last_error
     raise RuntimeError(f"{label} failed: {last_error}") from last_error
 
 
@@ -551,17 +578,36 @@ async def generate_taste_profile(
     snapshot: dict[str, Any],
     api_key: str,
     debug_info: dict[str, Any] | None = None,
+    provider: str = "opus",
 ) -> dict[str, Any]:
-    raw, response_debug = await with_retry(
-        lambda: call_anthropic_json(client, api_key, build_taste_profile_prompt(snapshot), 1800),
-        "Taste profile generation",
-    )
+    prompt = build_taste_profile_prompt(snapshot)
+    if provider == "opus":
+        model_name = ANTHROPIC_MODEL
+        label = "Anthropic taste profile"
+        raw, response_debug = await with_retry(
+            lambda: call_anthropic_json(client, api_key, prompt, 1800),
+            label,
+        )
+    elif provider == "gpt45":
+        model_name = OPENAI_MODEL
+        label = "OpenAI taste profile"
+        raw, response_debug = await with_retry(
+            lambda: call_openai_json(client, api_key, prompt, 1800),
+            label,
+        )
+    else:
+        raise ValueError(f"Unsupported taste profile provider: {provider}")
+
+    response_debug["provider"] = provider
     if debug_info is not None:
         debug_info.update(response_debug)
     try:
-        return normalize_taste_profile(raw)
+        normalized = normalize_taste_profile(raw)
     except Exception as exc:  # noqa: BLE001
         raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
+    normalized["model"] = model_name
+    normalized["provider"] = provider
+    return normalized
 
 
 async def generate_anthropic_recommendations(
@@ -651,12 +697,30 @@ def normalize_provider_selection(raw_values: list[str] | None) -> set[str] | Non
     return selected or None
 
 
+def normalize_taste_profile_provider(raw_value: str | None) -> str:
+    provider = (raw_value or os.getenv("TASTE_PROFILE_PROVIDER") or "claude").strip().lower()
+    mapped = TASTE_PROFILE_PROVIDER_ALIASES.get(provider)
+    if mapped is None:
+        valid = ", ".join(sorted(TASTE_PROFILE_PROVIDER_ALIASES))
+        raise ValueError(f"Unknown taste profile provider '{provider}'. Valid values: {valid}")
+    return mapped
+
+
+def _taste_profile_runtime_model(provider: str) -> str:
+    if provider == "opus":
+        return ANTHROPIC_MODEL
+    if provider == "gpt45":
+        return OPENAI_MODEL
+    raise ValueError(f"Unsupported taste profile provider: {provider}")
+
+
 def skip_generation(
     cache_payload: dict[str, Any],
     llm_input_hash: str,
     force: bool,
     selected_providers: set[str] | None = None,
     refresh_taste_profile: bool | None = None,
+    taste_profile_provider: str | None = None,
 ) -> bool:
     if refresh_taste_profile is None:
         refresh_taste_profile = selected_providers is None
@@ -672,11 +736,18 @@ def skip_generation(
         return False
 
     if refresh_taste_profile:
+        taste_profile_provider = normalize_taste_profile_provider(taste_profile_provider)
         taste_profile = cache_payload.get("taste_profile") or {}
+        expected_taste_model = _taste_profile_runtime_model(taste_profile_provider)
+        cached_taste_model = str(taste_profile.get("model") or "")
         if (
             target_input_hashes["taste_profile"] != llm_input_hash
             or taste_profile.get("error")
             or not taste_profile.get("summary")
+            or (
+                (taste_profile_provider != "opus" or bool(cached_taste_model))
+                and cached_taste_model != expected_taste_model
+            )
         ):
             return False
 
@@ -705,9 +776,15 @@ async def generate_cache_payload(
     force: bool = False,
     selected_providers: set[str] | None = None,
     refresh_taste_profile: bool | None = None,
+    taste_profile_provider: str | None = None,
 ) -> tuple[dict[str, Any], bool]:
     if refresh_taste_profile is None:
         refresh_taste_profile = selected_providers is None
+    taste_profile_provider = (
+        normalize_taste_profile_provider(taste_profile_provider)
+        if refresh_taste_profile
+        else "opus"
+    )
 
     full_refresh = _is_full_refresh(selected_providers, refresh_taste_profile)
     llm_input_hash = compute_llm_input_hash(books_payload)
@@ -717,6 +794,7 @@ async def generate_cache_payload(
         force,
         selected_providers=selected_providers,
         refresh_taste_profile=refresh_taste_profile,
+        taste_profile_provider=taste_profile_provider,
     ):
         return cache_payload, True
 
@@ -753,6 +831,7 @@ async def generate_cache_payload(
         "gpt45": OPENAI_MODEL,
         "gemini": GEMINI_MODEL,
     }
+    taste_profile_model = _taste_profile_runtime_model(taste_profile_provider)
     successful_targets: set[str] = set()
 
     def mark_target_success(target: str) -> None:
@@ -772,7 +851,10 @@ async def generate_cache_payload(
 
     if LLM_DRY_RUN:
         if refresh_taste_profile:
-            result["taste_profile"] = build_mock_taste_profile()
+            result["taste_profile"] = build_mock_taste_profile(
+                taste_profile_model,
+                taste_profile_provider,
+            )
             mark_target_success("taste_profile")
         if "opus" in target_providers:
             result["recommendations"]["opus"] = build_mock_recommendations(
@@ -795,29 +877,43 @@ async def generate_cache_payload(
     timeout = httpx.Timeout(REQUEST_TIMEOUT_SECONDS)
     async with httpx.AsyncClient(timeout=timeout) as client:
         if refresh_taste_profile:
-            taste_profile_debug: dict[str, Any] = {"model": ANTHROPIC_MODEL}
-            if anthropic_key:
+            taste_profile_debug: dict[str, Any] = {
+                "model": taste_profile_model,
+                "provider": taste_profile_provider,
+            }
+            taste_profile_keys = {
+                "opus": (anthropic_key, "ANTHROPIC_API_KEY is not set."),
+                "gpt45": (openai_key, "OPENAI_API_KEY is not set."),
+            }
+            taste_api_key, taste_missing_message = taste_profile_keys[taste_profile_provider]
+            if taste_api_key:
                 try:
                     result["taste_profile"] = await generate_taste_profile(
                         client,
                         snapshot,
-                        anthropic_key,
+                        taste_api_key,
                         debug_info=taste_profile_debug,
+                        provider=taste_profile_provider,
                     )
                     mark_target_success("taste_profile")
                 except Exception as exc:  # noqa: BLE001
                     if full_refresh:
-                        result["taste_profile"] = {"error": str(exc), "model": ANTHROPIC_MODEL}
+                        result["taste_profile"] = {
+                            "error": str(exc),
+                            "model": taste_profile_model,
+                            "provider": taste_profile_provider,
+                        }
                     taste_profile_debug["error"] = str(exc)
                     if isinstance(exc, ProviderResponseError):
                         taste_profile_debug.update(exc.debug_info)
             else:
                 if full_refresh:
                     result["taste_profile"] = {
-                        "error": "ANTHROPIC_API_KEY is not set.",
-                        "model": ANTHROPIC_MODEL,
+                        "error": taste_missing_message,
+                        "model": taste_profile_model,
+                        "provider": taste_profile_provider,
                     }
-                taste_profile_debug["error"] = "ANTHROPIC_API_KEY is not set."
+                taste_profile_debug["error"] = taste_missing_message
             result["debug"]["taste_profile"] = taste_profile_debug
 
         recommendation_tasks: list[tuple[str, asyncio.Future | Any | None, str]] = []
@@ -952,11 +1048,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--with-taste-profile",
         action="store_true",
-        help="When using --provider, also refresh the Anthropic taste profile.",
+        help="When using --provider, also refresh the taste profile.",
+    )
+    parser.add_argument(
+        "--taste-profile-provider",
+        default=None,
+        help="Taste profile provider to use: claude or openai. Defaults to TASTE_PROFILE_PROVIDER or claude.",
     )
     args = parser.parse_args()
     try:
         args.providers = normalize_provider_selection(args.provider)
+        if args.taste_profile_provider is not None:
+            args.taste_profile_provider = normalize_taste_profile_provider(
+                args.taste_profile_provider
+            )
     except ValueError as exc:
         parser.error(str(exc))
     return args
@@ -972,6 +1077,7 @@ def main() -> int:
             force=args.force,
             selected_providers=args.providers,
             refresh_taste_profile=args.with_taste_profile,
+            taste_profile_provider=args.taste_profile_provider,
         )
     return _main_json(
         Path(args.books),
@@ -979,6 +1085,7 @@ def main() -> int:
         force=args.force,
         selected_providers=args.providers,
         refresh_taste_profile=args.with_taste_profile,
+        taste_profile_provider=args.taste_profile_provider,
     )
 
 
@@ -987,6 +1094,7 @@ def _main_sqlite(
     force: bool,
     selected_providers: set[str] | None = None,
     refresh_taste_profile: bool = False,
+    taste_profile_provider: str | None = None,
 ) -> int:
     from bookshelf_data import BookshelfDB
 
@@ -1001,6 +1109,7 @@ def _main_sqlite(
             force=force,
             selected_providers=selected_providers,
             refresh_taste_profile=refresh_taste_profile,
+            taste_profile_provider=taste_profile_provider,
         )
     )
 
@@ -1022,6 +1131,7 @@ def _main_json(
     force: bool,
     selected_providers: set[str] | None = None,
     refresh_taste_profile: bool = False,
+    taste_profile_provider: str | None = None,
 ) -> int:
     if not books_path.exists():
         print(f"Error: books data not found: {books_path}", file=sys.stderr)
@@ -1037,6 +1147,7 @@ def _main_json(
             force=force,
             selected_providers=selected_providers,
             refresh_taste_profile=refresh_taste_profile,
+            taste_profile_provider=taste_profile_provider,
         )
     )
 

@@ -200,7 +200,11 @@ def _llm_target_errors(payload: dict, targets: tuple[str, ...]) -> dict[str, str
     return errors
 
 
-async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | None = None) -> None:
+async def _run_llm_regeneration(
+    force: bool = False,
+    targets: tuple[str, ...] | None = None,
+    taste_profile_provider: str | None = None,
+) -> None:
     global _llm_status
     selected_targets = targets or tuple(LLM_TARGET_KEYS)
     if not USE_SQLITE:
@@ -216,6 +220,8 @@ async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | 
         "started_at": utc_now_iso(),
         "targets": list(selected_targets),
     }
+    if taste_profile_provider and "taste_profile" in selected_targets:
+        _llm_status["taste_profile_provider"] = taste_profile_provider
     try:
         books_payload = store.books()
         cache_payload = store.llm_cache()
@@ -230,6 +236,7 @@ async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | 
             force=force,
             selected_providers=selected_providers,
             refresh_taste_profile=refresh_taste_profile,
+            taste_profile_provider=taste_profile_provider,
         )
         if skipped:
             _llm_status = {
@@ -238,6 +245,8 @@ async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | 
                 "books_hash": generated.get("books_hash"),
                 "targets": list(selected_targets),
             }
+            if taste_profile_provider and "taste_profile" in selected_targets:
+                _llm_status["taste_profile_provider"] = taste_profile_provider
             return
 
         _save_llm_cache_to_db(store.conn(), generated)
@@ -251,6 +260,8 @@ async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | 
                 "books_hash": generated.get("books_hash"),
                 "targets": list(selected_targets),
             }
+            if taste_profile_provider and "taste_profile" in selected_targets:
+                _llm_status["taste_profile_provider"] = taste_profile_provider
             return
 
         _llm_status = {
@@ -259,6 +270,8 @@ async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | 
             "books_hash": generated.get("books_hash"),
             "targets": list(selected_targets),
         }
+        if taste_profile_provider and "taste_profile" in selected_targets:
+            _llm_status["taste_profile_provider"] = taste_profile_provider
     except Exception as exc:
         _llm_status = {
             "status": "error",
@@ -266,6 +279,8 @@ async def _run_llm_regeneration(force: bool = False, targets: tuple[str, ...] | 
             "failed_at": utc_now_iso(),
             "targets": list(selected_targets),
         }
+        if taste_profile_provider and "taste_profile" in selected_targets:
+            _llm_status["taste_profile_provider"] = taste_profile_provider
 
 
 # ── Read endpoints ───────────────────────────────────────────────────────────
@@ -501,6 +516,7 @@ async def llm_regenerate(request: Request) -> dict:
 
     force = False
     targets: tuple[str, ...] | None = None
+    taste_profile_provider: str | None = None
     try:
         body = await request.json()
     except Exception:
@@ -508,13 +524,29 @@ async def llm_regenerate(request: Request) -> dict:
     if isinstance(body, dict):
         force = bool(body.get("force"))
         targets = _normalize_llm_targets(body.get("targets"))
+        if body.get("taste_profile_provider") is not None:
+            from scripts.generate_llm import normalize_taste_profile_provider
+
+            try:
+                taste_profile_provider = normalize_taste_profile_provider(
+                    str(body.get("taste_profile_provider") or "")
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     async def _run() -> None:
         async with _llm_lock:
-            await _run_llm_regeneration(force=force, targets=targets)
+            await _run_llm_regeneration(
+                force=force,
+                targets=targets,
+                taste_profile_provider=taste_profile_provider,
+            )
 
     asyncio.create_task(_run())
-    return {"status": "started", "targets": list(targets or LLM_TARGET_KEYS)}
+    response = {"status": "started", "targets": list(targets or LLM_TARGET_KEYS)}
+    if taste_profile_provider and "taste_profile" in response["targets"]:
+        response["taste_profile_provider"] = taste_profile_provider
+    return response
 
 
 # ── Health endpoint ──────────────────────────────────────────────────────────

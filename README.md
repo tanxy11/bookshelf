@@ -225,6 +225,7 @@ Useful direct commands:
 ./.venv/bin/python scripts/migrate_json_to_sqlite.py --db data/bookshelf.db
 ./.venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --provider gemini
 ./.venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --provider gemini --with-taste-profile
+./.venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --with-taste-profile --taste-profile-provider openai
 ```
 
 ## Data model notes
@@ -489,8 +490,8 @@ make restart-staging-api
 
 `scripts/generate_llm.py` computes a content hash from the read shelf. If the hash has not changed, generation is skipped unless `--force` is used.
 
-- Anthropic powers the taste profile and one recommendation column
-- OpenAI powers one recommendation column
+- Anthropic powers one recommendation column and is the default taste profile provider
+- OpenAI powers one recommendation column and can also generate the taste profile with `--taste-profile-provider openai`
 - Gemini powers one recommendation column
 - partial refreshes are supported by provider
 - `LLM_DRY_RUN=true` writes placeholders instead of making live model calls

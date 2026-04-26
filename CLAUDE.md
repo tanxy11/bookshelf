@@ -15,6 +15,8 @@ make add-notes-table # Create notes table in SQLite DB (idempotent)
 make add-capture-table # Create capture_events table in SQLite DB (idempotent, legacy — migration v8 auto-runs on startup)
 .venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --provider gemini
                      # Refresh only Gemini recommendations
+.venv/bin/python scripts/generate_llm.py --db data/bookshelf.db --with-taste-profile --taste-profile-provider openai
+                     # Refresh taste profile with OpenAI instead of Claude
 .venv/bin/python -m api.telegram_bot
                      # Run the Telegram capture bot locally (requires TELEGRAM_BOT_TOKEN + TELEGRAM_ALLOWED_CHAT_ID)
 ```
@@ -183,7 +185,7 @@ POST   /api/sync               # Deprecated (returns 410 Gone)
 ## Key Patterns
 
 - **LLM outputs** have strict JSON schemas enforced by `normalize_taste_profile()` and `normalize_recommendations()`. Partial failures are cached with an `"error"` key so one provider failing doesn't block the other.
-- **Partial reruns**: `scripts/generate_llm.py --provider gemini` refreshes only that recommendation column and preserves the rest of the cache. Add `--with-taste-profile` to also rerun the Anthropic taste profile.
+- **Partial reruns**: `scripts/generate_llm.py --provider gemini` refreshes only that recommendation column and preserves the rest of the cache. Add `--with-taste-profile` to also rerun the taste profile; use `--taste-profile-provider openai` to generate it with OpenAI instead of Claude.
 - **Rate limit retries**: `with_retry()` in `generate_llm.py` does up to 3 attempts; on 429 it reads the `retry-after` response header (falls back to 60s). Two Anthropic calls are made per build (taste profile, then recommendations), so rate limits are expected with Opus.
 - **Title cleaning**: Goodreads titles like `"Dune (Dune #1)"` are stripped to `"Dune"` during CSV parse.
 - **Auth**: Write endpoints require `Authorization: Bearer <token>`. Tokens are stored as SHA-256 hashes in the `auth_tokens` table. The env var `BOOKSHELF_AUTH_TOKEN` is a fallback when no SQLite DB is available.

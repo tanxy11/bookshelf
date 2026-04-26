@@ -289,6 +289,66 @@ class GenerateLlmTests(unittest.TestCase):
             generate_llm.GEMINI_RECOMMENDATIONS_JSON_SCHEMA,
         )
 
+    def test_call_openai_json_omits_temperature_for_reasoning_models(self):
+        captured = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json_dump({"ok": True}),
+                            }
+                        }
+                    ]
+                }
+
+        class FakeClient:
+            async def post(self, url, headers=None, json=None):
+                captured["url"] = url
+                captured["headers"] = headers
+                captured["json"] = json
+                return FakeResponse()
+
+        payload, debug_info = asyncio.run(
+            generate_llm.call_openai_json(FakeClient(), "test-key", "prompt", 80)
+        )
+
+        self.assertEqual(payload["ok"], True)
+        self.assertNotIn("temperature", captured["json"])
+        self.assertEqual(captured["json"]["max_completion_tokens"], 80)
+        self.assertEqual(debug_info["model"], generate_llm.OPENAI_MODEL)
+
+    def test_generate_taste_profile_can_use_openai_provider(self):
+        raw_profile = {
+            "summary": "A lively profile.",
+            "traits": [{"label": "Trait", "explanation": "Explained."}],
+            "blind_spots": "More jokes.",
+        }
+        openai_mock = AsyncMock(return_value=(raw_profile, {"model": "gpt-test"}))
+
+        with (
+            patch.object(generate_llm, "OPENAI_MODEL", "gpt-test"),
+            patch.object(generate_llm, "call_openai_json", openai_mock),
+        ):
+            profile = asyncio.run(
+                generate_llm.generate_taste_profile(
+                    object(),
+                    sample_books_payload(),
+                    "test-key",
+                    provider="gpt45",
+                )
+            )
+
+        self.assertEqual(profile["summary"], "A lively profile.")
+        self.assertEqual(profile["model"], "gpt-test")
+        self.assertEqual(profile["provider"], "gpt45")
+        openai_mock.assert_awaited_once()
+
     def test_provider_error_records_debug_info_without_overwriting_cached_content(self):
         books_payload = sample_books_payload()
         cache_payload = default_llm_cache()
@@ -717,12 +777,22 @@ class GenerateLlmTests(unittest.TestCase):
         with patch.object(
             sys,
             "argv",
-            ["generate_llm.py", "--db", "data/bookshelf.db", "--provider", "gemini,chatgpt", "--with-taste-profile"],
+            [
+                "generate_llm.py",
+                "--db",
+                "data/bookshelf.db",
+                "--provider",
+                "gemini,chatgpt",
+                "--with-taste-profile",
+                "--taste-profile-provider",
+                "openai",
+            ],
         ):
             args = generate_llm.parse_args()
 
         self.assertEqual(args.providers, {"gemini", "gpt45"})
         self.assertTrue(args.with_taste_profile)
+        self.assertEqual(args.taste_profile_provider, "gpt45")
 
 
 def json_dump(payload: dict) -> str:

@@ -5,7 +5,7 @@ Return strict JSON only with this shape:
   "traits": [
     {"label": "short trait label", "explanation": "one sentence explanation"}
   ],
-  "blind_spots": "1-2 sentences"
+  "blind_spots": "1-2 sentences, written as a playful gentle roast"
 }
 
 Rules:
@@ -13,7 +13,13 @@ Rules:
 - Use ratings, shelves, and review text when available.
 - Pay special attention to the 'notes' field — these contain the reader's own reflections and are the highest-signal data about their taste. Weight notes more heavily than ratings when they conflict.
 - Avoid generic genre summaries and empty flattery.
+- Summary is public-facing: write in warm third person ("this reader", "the reader", or "they"), not direct second person.
+- Summary should feel like a perceptive friend introducing the reader's taste to a visitor, not an academic profile, museum label, or performance review.
+- For the summary, prefer concrete, vivid phrasing over stacked abstract nouns. Include one memorable turn of phrase if the data supports it.
 - Traits should describe reading personality, not genres.
+- Blind spots should feel like a clever friend teasing the reader with affection: specific, lightly funny, and grounded in the data. Roast the pattern, not the person.
+- For blind spots, avoid formal phrases like "suggesting a possible tendency," "may reflect," "gap worth noticing," or "constructively." Prefer vivid, conversational language.
+- Do not be mean, scolding, diagnostic, or generic. The blind spot should leave the reader smiling and a little called out.
 - If the data is thin or ambiguous, say that honestly.
 - Keep the tone warm, insightful, and slightly playful.
 

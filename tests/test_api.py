@@ -240,7 +240,44 @@ class SqliteApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["targets"], ["gpt45"])
-        run_mock.assert_awaited_once_with(force=False, targets=("gpt45",))
+        run_mock.assert_awaited_once_with(
+            force=False,
+            targets=("gpt45",),
+            taste_profile_provider=None,
+        )
+
+    def test_llm_regenerate_accepts_taste_profile_provider(self):
+        captured: dict[str, object] = {}
+
+        def fake_create_task(coro):
+            captured["coro"] = coro
+            return object()
+
+        run_mock = AsyncMock()
+        with (
+            patch.object(self.api_main, "_run_llm_regeneration", run_mock),
+            patch.object(self.api_main.asyncio, "create_task", side_effect=fake_create_task),
+        ):
+            response = self.client.post(
+                "/api/llm/regenerate",
+                headers=self._headers(),
+                json={
+                    "force": False,
+                    "targets": ["taste_profile"],
+                    "taste_profile_provider": "openai",
+                },
+            )
+            self.assertIn("coro", captured)
+            asyncio.run(captured["coro"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["targets"], ["taste_profile"])
+        self.assertEqual(response.json()["taste_profile_provider"], "gpt45")
+        run_mock.assert_awaited_once_with(
+            force=False,
+            targets=("taste_profile",),
+            taste_profile_provider="gpt45",
+        )
 
     def test_llm_regenerate_rejects_empty_or_unknown_targets(self):
         empty_response = self.client.post(
