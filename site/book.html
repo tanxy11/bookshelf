@@ -232,7 +232,19 @@
       font-size: .8rem; color: var(--muted); margin-left: 8px; font-weight: 400;
       text-transform: none; letter-spacing: 0;
     }
-    .note-content { white-space: pre-wrap; line-height: 1.72; font-size: .99rem; }
+    .note-content {
+      white-space: pre-wrap;
+      line-height: 1.72;
+      font-size: .99rem;
+      overflow-wrap: anywhere;
+    }
+    .note-content a {
+      color: var(--accent-deep);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 0.12em;
+    }
+    .note-content a:hover { color: var(--accent); }
     .note-quote .note-content {
       border-left: 3px solid var(--accent); padding-left: 14px;
       font-style: italic; color: rgba(52, 41, 34, 0.94);
@@ -465,6 +477,47 @@ function escAttr(s) {
     .replace(/>/g, '&gt;');
 }
 
+function isSafeNoteLink(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
+
+function renderNoteContent(content) {
+  const text = String(content || '');
+  if (!text) return '';
+
+  const tokens = [];
+  const stashLink = html => {
+    const token = `%%NOTE_LINK_${tokens.length}%%`;
+    tokens.push({ token, html });
+    return token;
+  };
+
+  const withMarkdownLinks = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/gi, (match, label, url) => {
+    if (!isSafeNoteLink(url)) return match;
+    return stashLink(
+      `<a href="${escAttr(url)}" target="_blank" rel="noopener noreferrer">${escHtml(label)}</a>`
+    );
+  });
+
+  const withTokenizedUrls = withMarkdownLinks.replace(/https?:\/\/[^\s<]+/gi, match => {
+    if (!isSafeNoteLink(match)) return match;
+    return stashLink(
+      `<a href="${escAttr(match)}" target="_blank" rel="noopener noreferrer">${escHtml(match)}</a>`
+    );
+  });
+
+  let html = escHtml(withTokenizedUrls);
+  tokens.forEach(({ token, html: tokenHtml }) => {
+    html = html.replace(token, tokenHtml);
+  });
+  return html;
+}
+
 function stars(rating) {
   let html = '';
   for (let i = 1; i <= 5; i++) {
@@ -629,7 +682,7 @@ function renderNoteHtml(note) {
       <div class="note-display">
         <div class="note-label">${label}${locationHtml}</div>
         ${connectedHtml}
-        <div class="note-content">${escHtml(note.content)}</div>
+        <div class="note-content">${renderNoteContent(note.content)}</div>
         ${tagsHtml}
       </div>
     </div>`;
@@ -695,6 +748,7 @@ function buildNoteFormHtml(opts = {}) {
       <div>
         <label for="${prefix}-content">Note</label>
         <textarea id="${prefix}-content" placeholder="${escHtml(PLACEHOLDERS[noteType] || '')}">${escHtml(content)}</textarea>
+        <div class="field-hint">Links work here. Paste a URL or use Markdown like <code>[paper](https://example.com)</code>.</div>
       </div>
       <div class="note-form-row">
         <div>
