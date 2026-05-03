@@ -579,12 +579,31 @@
       color: var(--text);
     }
 
+    .taste-drift {
+      margin-top: 12px;
+      max-width: 68ch;
+      color: var(--text);
+      font-size: .9rem;
+      line-height: 1.58;
+    }
+
+    .taste-drift strong {
+      font-weight: 700;
+    }
+
     .taste-meta {
       margin-top: 12px;
       color: var(--muted);
       font-size: .84rem;
       line-height: 1.6;
       max-width: 60ch;
+    }
+
+    .taste-run-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: .76rem;
+      line-height: 1.45;
     }
 
     .taste-preview {
@@ -2190,7 +2209,9 @@
           <div class="taste-summary-card">
             <div class="taste-summary-label">Reading sketch</div>
             <div class="taste-summary" id="taste-summary"></div>
+            <p class="taste-drift hidden" id="taste-drift"></p>
             <p class="taste-meta">Not a verdict, just a compact read on what the shelf suggests when you step back from the individual spines.</p>
+            <p class="taste-run-meta hidden" id="taste-run-meta"></p>
           </div>
           <button class="taste-inline-toggle is-collapse" id="taste-collapse-toggle" type="button">Show less</button>
           <div class="traits-grid" id="traits-grid"></div>
@@ -3196,6 +3217,10 @@ function renderTasteProfile(profile) {
     emptyState.textContent = 'Taste profile not generated yet. Refresh taste profile to populate this section.';
     emptyState.classList.remove('hidden');
     document.getElementById('taste-summary').textContent = '';
+    document.getElementById('taste-drift').textContent = '';
+    document.getElementById('taste-drift').classList.add('hidden');
+    document.getElementById('taste-run-meta').textContent = '';
+    document.getElementById('taste-run-meta').classList.add('hidden');
     document.getElementById('taste-preview').textContent = '';
     document.getElementById('traits-grid').innerHTML = '';
     document.getElementById('blind-spot').innerHTML = '';
@@ -3206,10 +3231,28 @@ function renderTasteProfile(profile) {
   tastePreviewShellEl.classList.remove('hidden');
   tasteContentEl.classList.remove('hidden');
   document.getElementById('taste-summary').textContent = tasteProfilePayload.summary;
+  const driftEl = document.getElementById('taste-drift');
+  if (tasteProfilePayload.current_drift) {
+    driftEl.innerHTML = `<strong>Current drift.</strong> ${escHtml(tasteProfilePayload.current_drift)}`;
+    driftEl.classList.remove('hidden');
+  } else {
+    driftEl.textContent = '';
+    driftEl.classList.add('hidden');
+  }
   const preview = tasteProfilePayload.summary.length > 220
     ? `${tasteProfilePayload.summary.slice(0, 220).trimEnd()}...`
     : tasteProfilePayload.summary;
   document.getElementById('taste-preview').textContent = preview;
+  const tasteRunMetaEl = document.getElementById('taste-run-meta');
+  const tasteTargetState = llmTargetHealth('taste_profile');
+  const tasteGeneratedAt = tasteTargetState && tasteTargetState.generated_at;
+  if (tasteGeneratedAt) {
+    tasteRunMetaEl.textContent = `Taste profile last generated on ${formatLongDate(tasteGeneratedAt)}.`;
+    tasteRunMetaEl.classList.remove('hidden');
+  } else {
+    tasteRunMetaEl.textContent = '';
+    tasteRunMetaEl.classList.add('hidden');
+  }
   document.getElementById('traits-grid').innerHTML = (tasteProfilePayload.traits || []).map(trait => `
     <article class="trait-card">
       <h3 class="trait-title">${escHtml(trait.label)}</h3>
@@ -3361,6 +3404,7 @@ async function refreshHealthPayload() {
   healthPayload = payload;
   renderStagingBanner(healthPayload);
   syncLlmAdminControls();
+  if (tasteProfilePayload) renderTasteProfile(tasteProfilePayload);
   updateFooter(booksGeneratedAt);
   return payload;
 }
@@ -3476,6 +3520,7 @@ async function load() {
     healthPayload = healthResult.value;
     renderStagingBanner(healthPayload);
     syncLlmAdminControls();
+    if (tasteProfilePayload) renderTasteProfile(tasteProfilePayload);
   }
 
   const data = booksResult.value;

@@ -223,6 +223,7 @@ def build_mock_taste_profile(
         "model": model_name,
         "provider": provider,
         "summary": "[DRY RUN] Mock taste profile",
+        "current_drift": "[DRY RUN] Mock current drift",
         "traits": [
             {
                 "label": "Mock Trait",
@@ -252,23 +253,178 @@ def build_mock_recommendations(model_name: str, prefix: str) -> dict[str, Any]:
         "reasoning": f"[DRY RUN] Placeholder recommendation strategy from {prefix}.",
     }
 
-def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
-    books = books_payload.get("books", {})
+RECENT_READ_LIMIT = 50
+CURRENT_READING_NOTE_LIMIT = 2
+HISTORICAL_ANCHOR_LIMIT = 25
+HISTORICAL_SAMPLE_LIMIT = 50
 
-    def _read_entry(book: dict[str, Any]) -> dict[str, Any]:
-        entry = {
-            "title": book.get("title"),
-            "author": book.get("author"),
-            "my_rating": book.get("my_rating"),
-            "my_review": book.get("my_review"),
-            "shelves": book.get("shelves", []),
-            "date_read": book.get("date_read"),
-        }
-        return entry
+
+def _book_identity(book: dict[str, Any]) -> tuple[str, str]:
+    return normalize_book_key(book.get("title", ""), book.get("author", ""))
+
+
+def _book_entry(
+    book: dict[str, Any],
+    *,
+    include_notes: bool = False,
+    notes_limit: int = 0,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    entry = {
+        "title": book.get("title"),
+        "author": book.get("author"),
+        "my_rating": book.get("my_rating"),
+        "my_review": book.get("my_review"),
+        "shelves": book.get("shelves", []),
+        "date_read": book.get("date_read"),
+        "date_added": book.get("date_added"),
+        "read_events": book.get("read_events", []),
+        "note_count": int(book.get("note_count") or 0),
+    }
+    if include_notes:
+        entry["notes"] = [
+            {
+                "note_type": note.get("note_type"),
+                "content": note.get("content"),
+                "page_or_location": note.get("page_or_location"),
+                "created_at": note.get("created_at"),
+            }
+            for note in (book.get("notes") or [])[:notes_limit]
+            if isinstance(note, dict) and str(note.get("content") or "").strip()
+        ]
+    if extra:
+        entry.update(extra)
+    return entry
+
+
+def _read_completion_count(book: dict[str, Any]) -> int:
+    return sum(
+        1
+        for event in (book.get("read_events") or [])
+        if isinstance(event, dict) and event.get("finished_on")
+    )
+
+
+def _historical_anchor_score(book: dict[str, Any]) -> float:
+    rating = int(book.get("my_rating") or 0)
+    review_length = len(str(book.get("my_review") or ""))
+    note_count = int(book.get("note_count") or 0)
+    reread_count = max(0, _read_completion_count(book) - 1)
+    return (
+        rating * 20
+        + min(review_length / 120, 20)
+        + min(note_count * 8, 32)
+        + reread_count * 14
+    )
+
+
+def _historical_anchor_reasons(book: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if int(book.get("my_rating") or 0) >= 5:
+        reasons.append("high_rating")
+    if len(str(book.get("my_review") or "")) >= 600:
+        reasons.append("substantial_review")
+    if int(book.get("note_count") or 0) > 0:
+        reasons.append("has_notes")
+    if _read_completion_count(book) > 1:
+        reasons.append("reread")
+    return reasons or ["representative_older_read"]
+
+
+def _stable_sample_key(book: dict[str, Any]) -> str:
+    title = str(book.get("title") or "").strip().lower()
+    author = str(book.get("author") or "").strip().lower()
+    return hashlib.sha256(f"taste-profile-sample-v1\0{title}\0{author}".encode("utf-8")).hexdigest()
+
+
+def build_taste_profile_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
+    books = books_payload.get("books", {})
+    read_books = [book for book in books.get("read", []) if isinstance(book, dict)]
+    currently_reading = [
+        book
+        for book in books.get("currently_reading", [])
+        if isinstance(book, dict)
+        and any(str(note.get("content") or "").strip() for note in (book.get("notes") or []))
+    ]
+
+    recent_read_books = read_books[:RECENT_READ_LIMIT]
+    recent_keys = {_book_identity(book) for book in recent_read_books}
+    older_read_books = [book for book in read_books if _book_identity(book) not in recent_keys]
+
+    anchors = sorted(
+        older_read_books,
+        key=lambda book: (-_historical_anchor_score(book), str(book.get("date_read") or "")),
+    )[:HISTORICAL_ANCHOR_LIMIT]
+    anchor_keys = {_book_identity(book) for book in anchors}
+    sample_pool = [book for book in older_read_books if _book_identity(book) not in anchor_keys]
+    historical_sample = sorted(sample_pool, key=_stable_sample_key)[:HISTORICAL_SAMPLE_LIMIT]
 
     return {
         "stats": books_payload.get("stats", {}),
-        "read": [_read_entry(book) for book in books.get("read", [])],
+        "selection_strategy": {
+            "recent_read_books": (
+                f"Most recent {RECENT_READ_LIMIT} completed books, with ratings, shelves, "
+                "reviews, read dates, and note counts."
+            ),
+            "currently_reading_with_notes": (
+                "Only in-progress books with personal notes. These are high-signal but "
+                "provisional evidence of current preoccupations."
+            ),
+            "historical_anchors": (
+                f"Up to {HISTORICAL_ANCHOR_LIMIT} older completed books selected for high "
+                "rating, substantial review text, note count, or rereading."
+            ),
+            "historical_sample": (
+                f"A deterministic sample of up to {HISTORICAL_SAMPLE_LIMIT} older completed "
+                "books not already selected as anchors."
+            ),
+        },
+        "recent_read_books": [_book_entry(book) for book in recent_read_books],
+        "currently_reading_with_notes": [
+            _book_entry(
+                book,
+                include_notes=True,
+                notes_limit=CURRENT_READING_NOTE_LIMIT,
+                extra={"evidence_status": "in_progress"},
+            )
+            for book in currently_reading
+        ],
+        "historical_anchors": [
+            _book_entry(
+                book,
+                include_notes=True,
+                notes_limit=1,
+                extra={
+                    "anchor_score": round(_historical_anchor_score(book), 2),
+                    "anchor_reasons": _historical_anchor_reasons(book),
+                },
+            )
+            for book in anchors
+        ],
+        "historical_sample": [_book_entry(book) for book in historical_sample],
+        "excluded_counts": {
+            "read_books_not_in_snapshot": max(
+                0,
+                len(read_books)
+                - len(recent_read_books)
+                - len(anchors)
+                - len(historical_sample),
+            ),
+            "currently_reading_without_notes": max(
+                0,
+                len([book for book in books.get("currently_reading", []) if isinstance(book, dict)])
+                - len(currently_reading),
+            ),
+        },
+    }
+
+
+def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
+    books = books_payload.get("books", {})
+
+    return {
+        "stats": books_payload.get("stats", {}),
+        "read": [_book_entry(book) for book in books.get("read", [])],
         "currently_reading": [
             {
                 "title": book.get("title"),
@@ -345,6 +501,7 @@ def extract_json_object(raw: str) -> dict[str, Any]:
 
 def normalize_taste_profile(payload: dict[str, Any]) -> dict[str, Any]:
     summary = " ".join(str(payload.get("summary") or "").split())
+    current_drift = " ".join(str(payload.get("current_drift") or "").split())
     blind_spots = " ".join(str(payload.get("blind_spots") or "").split())
     traits: list[dict[str, str]] = []
     for item in payload.get("traits") or []:
@@ -362,6 +519,7 @@ def normalize_taste_profile(payload: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "summary": summary,
+        "current_drift": current_drift,
         "traits": traits[:5],
         "blind_spots": blind_spots,
     }
@@ -799,6 +957,7 @@ async def generate_cache_payload(
         return cache_payload, True
 
     snapshot = build_library_snapshot(books_payload)
+    taste_profile_snapshot = build_taste_profile_snapshot(books_payload)
     all_books = {
         normalize_book_key(book.get("title", ""), book.get("author", ""))
         for shelf in ("read", "currently_reading")
@@ -890,7 +1049,7 @@ async def generate_cache_payload(
                 try:
                     result["taste_profile"] = await generate_taste_profile(
                         client,
-                        snapshot,
+                        taste_profile_snapshot,
                         taste_api_key,
                         debug_info=taste_profile_debug,
                         provider=taste_profile_provider,
@@ -1099,7 +1258,7 @@ def _main_sqlite(
     from bookshelf_data import BookshelfDB
 
     store = BookshelfDB(db_path)
-    books_payload = store.books()
+    books_payload = store.books(include_notes=True)
     cache_payload = store.llm_cache()
 
     generated_payload, skipped = asyncio.run(

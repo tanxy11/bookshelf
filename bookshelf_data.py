@@ -168,22 +168,50 @@ def compute_books_hash(books_payload: dict[str, Any] | list[dict[str, Any]]) -> 
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _llm_input_hash_entry(book: dict[str, Any]) -> list[Any]:
+def _llm_note_hash_entry(note: dict[str, Any]) -> list[Any]:
     return [
+        int(note.get("id") or 0),
+        (note.get("note_type") or "").strip(),
+        (note.get("content") or "").strip(),
+        (note.get("page_or_location") or "").strip(),
+        (note.get("created_at") or "").strip(),
+    ]
+
+
+def _llm_input_hash_entry(book: dict[str, Any], shelf_key: str = "read") -> list[Any]:
+    return [
+        shelf_key,
         (book.get("title") or "").strip(),
         (book.get("author") or "").strip(),
         int(book.get("my_rating") or 0),
         (book.get("my_review") or book.get("review") or "").strip(),
+        (book.get("date_read") or "").strip(),
+        sorted(str(shelf).strip() for shelf in (book.get("shelves") or []) if str(shelf).strip()),
+        [_llm_note_hash_entry(note) for note in (book.get("notes") or []) if isinstance(note, dict)],
     ]
 
 
 def compute_llm_input_hash(books_payload: dict[str, Any] | list[dict[str, Any]]) -> str:
     if isinstance(books_payload, dict):
-        read_books = books_payload.get("books", {}).get("read", [])
+        books_by_shelf = books_payload.get("books", {})
+        current_books_with_notes = [
+            book
+            for book in books_by_shelf.get("currently_reading", [])
+            if any(
+                str(note.get("content") or "").strip()
+                for note in (book.get("notes") or [])
+                if isinstance(note, dict)
+            )
+        ]
+        fingerprint = sorted(
+            [_llm_input_hash_entry(book, "read") for book in books_by_shelf.get("read", [])]
+            + [
+                _llm_input_hash_entry(book, "currently_reading")
+                for book in current_books_with_notes
+            ]
+        )
     else:
-        read_books = books_payload
-
-    fingerprint = sorted(_llm_input_hash_entry(book) for book in read_books)
+        fingerprint = sorted(_llm_input_hash_entry(book, "read") for book in books_payload)
     payload = json.dumps(fingerprint, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -314,7 +342,7 @@ class BookshelfStore:
         self.books_file = JsonFileCache(books_path, default_books_payload)
         self.llm_cache_file = JsonFileCache(llm_cache_path, default_llm_cache)
 
-    def books(self) -> dict[str, Any]:
+    def books(self, include_notes: bool = False) -> dict[str, Any]:
         payload = self.books_file.read()
         for shelf in payload.get("books", {}).values():
             if not isinstance(shelf, list):
@@ -413,7 +441,7 @@ class BookshelfDB:
 
         return d
 
-    def _get_books_by_shelf(self, shelf: str) -> list[dict[str, Any]]:
+    def _get_books_by_shelf(self, shelf: str, include_notes: bool = False) -> list[dict[str, Any]]:
         if shelf == "read":
             order = """
                 CASE WHEN date_read IS NOT NULL AND date_read != '' THEN 0 ELSE 1 END,
@@ -428,7 +456,53 @@ class BookshelfDB:
             f"SELECT * FROM books WHERE exclusive_shelf = ? ORDER BY {order}",
             (shelf,),
         ).fetchall()
-        return [self._row_to_book(row) for row in rows]
+        books = [self._row_to_book(row) for row in rows]
+        if include_notes:
+            self._attach_recent_notes(books)
+        return books
+
+    def _attach_recent_notes(self, books: list[dict[str, Any]], limit: int = 3) -> None:
+        book_ids = [int(book["id"]) for book in books if book.get("id")]
+        if not book_ids:
+            return
+
+        placeholders = ",".join("?" for _ in book_ids)
+        counts = {
+            int(row["source_id"]): int(row["count"])
+            for row in self.conn().execute(
+                f"""SELECT source_id, COUNT(*) AS count
+                    FROM notes
+                    WHERE source_type = 'book' AND source_id IN ({placeholders})
+                    GROUP BY source_id""",
+                book_ids,
+            ).fetchall()
+        }
+        notes_by_book: dict[int, list[dict[str, Any]]] = {book_id: [] for book_id in book_ids}
+        rows = self.conn().execute(
+            f"""SELECT id, source_id, note_type, content, page_or_location, created_at
+                FROM notes
+                WHERE source_type = 'book' AND source_id IN ({placeholders})
+                ORDER BY source_id, created_at DESC, id DESC""",
+            book_ids,
+        ).fetchall()
+        for row in rows:
+            book_id = int(row["source_id"])
+            if len(notes_by_book.get(book_id, [])) >= limit:
+                continue
+            notes_by_book.setdefault(book_id, []).append(
+                {
+                    "id": row["id"],
+                    "note_type": row["note_type"],
+                    "content": row["content"] or "",
+                    "page_or_location": row["page_or_location"] or "",
+                    "created_at": row["created_at"] or "",
+                }
+            )
+
+        for book in books:
+            book_id = int(book.get("id") or 0)
+            book["note_count"] = counts.get(book_id, 0)
+            book["notes"] = notes_by_book.get(book_id, [])
 
     def _compute_stats(self, read_books: list[dict[str, Any]],
                        to_read_count: int,
@@ -467,10 +541,10 @@ class BookshelfDB:
             "currently_reading_count": currently_reading_count,
         }
 
-    def books(self) -> dict[str, Any]:
-        read = self._get_books_by_shelf("read")
-        currently_reading = self._get_books_by_shelf("currently_reading")
-        to_read = self._get_books_by_shelf("to_read")
+    def books(self, include_notes: bool = False) -> dict[str, Any]:
+        read = self._get_books_by_shelf("read", include_notes=include_notes)
+        currently_reading = self._get_books_by_shelf("currently_reading", include_notes=include_notes)
+        to_read = self._get_books_by_shelf("to_read", include_notes=include_notes)
         stats = self._compute_stats(read, len(to_read), len(currently_reading))
 
         # Use the most recent updated_at as generated_at
