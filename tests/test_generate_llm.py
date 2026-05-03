@@ -161,14 +161,24 @@ class GenerateLlmTests(unittest.TestCase):
         ]
         books_payload["books"]["currently_reading"] = [
             {
-                "title": "Live Wire",
+                "title": f"Live Wire {index}",
                 "author": "Reader",
                 "notes": [
-                    {"id": 2, "note_type": "question", "content": "What should come next?"},
-                    {"id": 1, "note_type": "thought", "content": "This feels urgent."},
+                    {
+                        "id": 2,
+                        "note_type": "question",
+                        "content": f"What should come next {index}?",
+                    },
+                    {
+                        "id": 1,
+                        "note_type": "thought",
+                        "content": f"This feels urgent {index}.",
+                    },
                 ],
                 "note_count": 2,
-            },
+            }
+            for index in range(4)
+        ] + [
             {"title": "No Notes Yet", "author": "Reader", "notes": []},
         ]
         books_payload["books"]["to_read"] = [
@@ -179,7 +189,12 @@ class GenerateLlmTests(unittest.TestCase):
         serialized = json_dump(snapshot)
 
         self.assertEqual(len(snapshot["recent_read_books"]), 40)
-        self.assertEqual(snapshot["currently_reading_with_notes"][0]["title"], "Live Wire")
+        self.assertEqual(len(snapshot["currently_reading_with_notes"]), 3)
+        self.assertEqual(snapshot["currently_reading_with_notes"][0]["title"], "Live Wire 0")
+        self.assertEqual(
+            snapshot["excluded_counts"]["currently_reading_with_notes_not_in_snapshot"],
+            1,
+        )
         self.assertNotIn("to_read", snapshot)
         self.assertNotIn("Known Unknown", serialized)
         self.assertEqual(snapshot["excluded_counts"]["to_read_books_omitted"], 1)

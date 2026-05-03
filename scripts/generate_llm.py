@@ -258,6 +258,7 @@ CURRENT_READING_NOTE_LIMIT = 2
 HISTORICAL_ANCHOR_LIMIT = 25
 HISTORICAL_SAMPLE_LIMIT = 50
 RECOMMENDATION_RECENT_READ_LIMIT = 40
+RECOMMENDATION_CURRENT_READING_LIMIT = 3
 RECOMMENDATION_ANCHOR_LIMIT = 20
 
 
@@ -424,12 +425,13 @@ def build_taste_profile_snapshot(books_payload: dict[str, Any]) -> dict[str, Any
 def build_recommendations_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
     books = books_payload.get("books", {})
     read_books = [book for book in books.get("read", []) if isinstance(book, dict)]
-    currently_reading = [
+    currently_reading_with_notes = [
         book
         for book in books.get("currently_reading", [])
         if isinstance(book, dict)
         and any(str(note.get("content") or "").strip() for note in (book.get("notes") or []))
     ]
+    selected_currently_reading = currently_reading_with_notes[:RECOMMENDATION_CURRENT_READING_LIMIT]
 
     recent_read_books = read_books[:RECOMMENDATION_RECENT_READ_LIMIT]
     recent_keys = {_book_identity(book) for book in recent_read_books}
@@ -447,8 +449,9 @@ def build_recommendations_snapshot(books_payload: dict[str, Any]) -> dict[str, A
                 "Use these as the strongest signal for what would fit now."
             ),
             "currently_reading_with_notes": (
-                "Only in-progress books with personal notes. These are high-signal "
-                "evidence of current preoccupations, but provisional."
+                f"Up to {RECOMMENDATION_CURRENT_READING_LIMIT} in-progress books with "
+                "personal notes. These are high-signal evidence of current preoccupations, "
+                "but provisional."
             ),
             "historical_anchors": (
                 f"Up to {RECOMMENDATION_ANCHOR_LIMIT} older high-signal books selected "
@@ -468,7 +471,7 @@ def build_recommendations_snapshot(books_payload: dict[str, Any]) -> dict[str, A
                 notes_limit=CURRENT_READING_NOTE_LIMIT,
                 extra={"evidence_status": "in_progress"},
             )
-            for book in currently_reading
+            for book in selected_currently_reading
         ],
         "historical_anchors": [
             _book_entry(
@@ -490,7 +493,11 @@ def build_recommendations_snapshot(books_payload: dict[str, Any]) -> dict[str, A
             "currently_reading_without_notes": max(
                 0,
                 len([book for book in books.get("currently_reading", []) if isinstance(book, dict)])
-                - len(currently_reading),
+                - len(currently_reading_with_notes),
+            ),
+            "currently_reading_with_notes_not_in_snapshot": max(
+                0,
+                len(currently_reading_with_notes) - len(selected_currently_reading),
             ),
             "to_read_books_omitted": len(
                 [book for book in books.get("to_read", []) if isinstance(book, dict)]
