@@ -493,6 +493,7 @@ make restart-staging-api
 - Anthropic powers one recommendation column and is the default taste profile provider
 - OpenAI powers one recommendation column and can also generate the taste profile with `--taste-profile-provider openai`
 - Gemini powers one recommendation column
+- the taste profile uses a bucketed snapshot: recent completed reads, currently-reading books with notes, older high-signal anchors, and a deterministic historical sample
 - partial refreshes are supported by provider
 - `LLM_DRY_RUN=true` writes placeholders instead of making live model calls
 

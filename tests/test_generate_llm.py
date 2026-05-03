@@ -82,13 +82,65 @@ class GenerateLlmTests(unittest.TestCase):
 
         self.assertNotEqual(original_hash, compute_llm_input_hash(books_payload))
 
-    def test_llm_input_hash_ignores_notes(self):
+    def test_llm_input_hash_changes_when_notes_change(self):
         books_payload = sample_books_payload()
         original_hash = compute_llm_input_hash(books_payload)
 
-        books_payload["books"]["read"][0]["notes"] = "A private note should not affect freshness."
+        books_payload["books"]["currently_reading"].append(
+            {
+                "title": "Live Book",
+                "author": "Author Three",
+                "notes": [{"id": 1, "note_type": "thought", "content": "Fresh obsession."}],
+            }
+        )
 
-        self.assertEqual(original_hash, compute_llm_input_hash(books_payload))
+        self.assertNotEqual(original_hash, compute_llm_input_hash(books_payload))
+
+    def test_taste_profile_snapshot_uses_bucketed_input(self):
+        books_payload = sample_books_payload()
+        books_payload["books"]["read"] = [
+            {
+                "title": f"Book {index:02d}",
+                "author": "Author",
+                "my_rating": 5 if index == 55 else 3,
+                "my_review": "Long review. " * (80 if index == 56 else 1),
+                "shelves": ["history"],
+                "date_read": f"2026-02-{(index % 28) + 1:02d}",
+                "date_added": f"2026-01-{(index % 28) + 1:02d}",
+                "read_events": [{"finished_on": f"2026-02-{(index % 28) + 1:02d}"}],
+                "note_count": 1 if index == 57 else 0,
+                "notes": [{"id": 9, "note_type": "thought", "content": "Older live wire."}]
+                if index == 57
+                else [],
+            }
+            for index in range(60)
+        ]
+        books_payload["books"]["currently_reading"] = [
+            {
+                "title": "In Progress With Notes",
+                "author": "Reader",
+                "notes": [
+                    {"id": 2, "note_type": "question", "content": "What is changing?"},
+                    {"id": 1, "note_type": "thought", "content": "Something is brewing."},
+                    {"id": 0, "note_type": "thought", "content": "Older note."},
+                ],
+                "note_count": 3,
+            },
+            {"title": "In Progress Without Notes", "author": "Reader", "notes": []},
+        ]
+
+        snapshot = generate_llm.build_taste_profile_snapshot(books_payload)
+
+        self.assertEqual(len(snapshot["recent_read_books"]), 50)
+        self.assertEqual(
+            snapshot["currently_reading_with_notes"][0]["title"],
+            "In Progress With Notes",
+        )
+        self.assertEqual(len(snapshot["currently_reading_with_notes"][0]["notes"]), 2)
+        self.assertEqual(snapshot["currently_reading_with_notes"][0]["evidence_status"], "in_progress")
+        self.assertGreaterEqual(len(snapshot["historical_anchors"]), 1)
+        self.assertIn("selection_strategy", snapshot)
+        self.assertEqual(snapshot["excluded_counts"]["currently_reading_without_notes"], 1)
 
     def test_skip_generation_when_hash_matches(self):
         books_payload = sample_books_payload()

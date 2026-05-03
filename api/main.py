@@ -223,7 +223,7 @@ async def _run_llm_regeneration(
     if taste_profile_provider and "taste_profile" in selected_targets:
         _llm_status["taste_profile_provider"] = taste_profile_provider
     try:
-        books_payload = store.books()
+        books_payload = store.books(include_notes=True)
         cache_payload = store.llm_cache()
 
         from scripts.generate_llm import generate_cache_payload, _save_llm_cache_to_db
