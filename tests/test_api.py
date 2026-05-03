@@ -32,7 +32,7 @@ class ApiTests(unittest.TestCase):
                     "books": {
                         "read": [{"title": "Book A", "author": "Author One", "my_rating": 5}],
                         "currently_reading": [],
-                        "to_read": [],
+                        "to_read": [{"title": "Rec A", "author": "Author A"}],
                     },
                     "stats": {"total_read": 1},
                 }
@@ -103,6 +103,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("opus", payload)
         self.assertIn("gemini", payload)
         self.assertEqual(payload["opus"]["books"][0]["title"], "Rec A")
+        self.assertTrue(payload["opus"]["books"][0]["from_to_read"])
 
     def test_health_endpoint_prefers_llm_timestamp(self):
         response = self.client.get("/api/health")

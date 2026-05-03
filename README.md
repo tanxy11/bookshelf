@@ -494,6 +494,7 @@ make restart-staging-api
 - OpenAI powers one recommendation column and can also generate the taste profile with `--taste-profile-provider openai`
 - Gemini powers one recommendation column
 - the taste profile uses a bucketed snapshot: recent completed reads, currently-reading books with notes, older high-signal anchors, and a deterministic historical sample
+- recommendations use a recent/current-heavy snapshot and intentionally omit the to-read shelf; to-read overlap is marked after generation by matching title/author
 - partial refreshes are supported by provider
 - `LLM_DRY_RUN=true` writes placeholders instead of making live model calls
 

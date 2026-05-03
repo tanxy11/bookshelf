@@ -257,6 +257,9 @@ RECENT_READ_LIMIT = 50
 CURRENT_READING_NOTE_LIMIT = 2
 HISTORICAL_ANCHOR_LIMIT = 25
 HISTORICAL_SAMPLE_LIMIT = 50
+RECOMMENDATION_RECENT_READ_LIMIT = 40
+RECOMMENDATION_CURRENT_READING_LIMIT = 3
+RECOMMENDATION_ANCHOR_LIMIT = 20
 
 
 def _book_identity(book: dict[str, Any]) -> tuple[str, str]:
@@ -419,6 +422,90 @@ def build_taste_profile_snapshot(books_payload: dict[str, Any]) -> dict[str, Any
     }
 
 
+def build_recommendations_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
+    books = books_payload.get("books", {})
+    read_books = [book for book in books.get("read", []) if isinstance(book, dict)]
+    currently_reading_with_notes = [
+        book
+        for book in books.get("currently_reading", [])
+        if isinstance(book, dict)
+        and any(str(note.get("content") or "").strip() for note in (book.get("notes") or []))
+    ]
+    selected_currently_reading = currently_reading_with_notes[:RECOMMENDATION_CURRENT_READING_LIMIT]
+
+    recent_read_books = read_books[:RECOMMENDATION_RECENT_READ_LIMIT]
+    recent_keys = {_book_identity(book) for book in recent_read_books}
+    older_read_books = [book for book in read_books if _book_identity(book) not in recent_keys]
+    anchors = sorted(
+        older_read_books,
+        key=lambda book: (-_historical_anchor_score(book), str(book.get("date_read") or "")),
+    )[:RECOMMENDATION_ANCHOR_LIMIT]
+
+    return {
+        "stats": books_payload.get("stats", {}),
+        "selection_strategy": {
+            "recent_read_books": (
+                f"Most recent {RECOMMENDATION_RECENT_READ_LIMIT} completed books. "
+                "Use these as the strongest signal for what would fit now."
+            ),
+            "currently_reading_with_notes": (
+                f"Up to {RECOMMENDATION_CURRENT_READING_LIMIT} in-progress books with "
+                "personal notes. These are high-signal evidence of current preoccupations, "
+                "but provisional."
+            ),
+            "historical_anchors": (
+                f"Up to {RECOMMENDATION_ANCHOR_LIMIT} older high-signal books selected "
+                "for high ratings, substantial reviews, note count, or rereading."
+            ),
+            "to_read_policy": (
+                "The to_read shelf is intentionally omitted so recommendations can surface "
+                "unknown unknowns. Whether a recommendation is already on to_read is marked "
+                "after model generation by exact title/author matching."
+            ),
+        },
+        "recent_read_books": [_book_entry(book) for book in recent_read_books],
+        "currently_reading_with_notes": [
+            _book_entry(
+                book,
+                include_notes=True,
+                notes_limit=CURRENT_READING_NOTE_LIMIT,
+                extra={"evidence_status": "in_progress"},
+            )
+            for book in selected_currently_reading
+        ],
+        "historical_anchors": [
+            _book_entry(
+                book,
+                include_notes=True,
+                notes_limit=1,
+                extra={
+                    "anchor_score": round(_historical_anchor_score(book), 2),
+                    "anchor_reasons": _historical_anchor_reasons(book),
+                },
+            )
+            for book in anchors
+        ],
+        "excluded_counts": {
+            "read_books_not_in_snapshot": max(
+                0,
+                len(read_books) - len(recent_read_books) - len(anchors),
+            ),
+            "currently_reading_without_notes": max(
+                0,
+                len([book for book in books.get("currently_reading", []) if isinstance(book, dict)])
+                - len(currently_reading_with_notes),
+            ),
+            "currently_reading_with_notes_not_in_snapshot": max(
+                0,
+                len(currently_reading_with_notes) - len(selected_currently_reading),
+            ),
+            "to_read_books_omitted": len(
+                [book for book in books.get("to_read", []) if isinstance(book, dict)]
+            ),
+        },
+    }
+
+
 def build_library_snapshot(books_payload: dict[str, Any]) -> dict[str, Any]:
     books = books_payload.get("books", {})
 
@@ -526,10 +613,13 @@ def normalize_taste_profile(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_recommendations(
-    payload: dict[str, Any], existing_books: set[tuple[str, str]]
+    payload: dict[str, Any],
+    existing_books: set[tuple[str, str]],
+    to_read_books: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     cleaned_books: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
+    to_read_books = to_read_books or set()
 
     for item in payload.get("books") or []:
         if not isinstance(item, dict):
@@ -545,7 +635,7 @@ def normalize_recommendations(
         if not title or not author or not reason or key in seen or key in existing_books:
             continue
 
-        from_to_read = bool(item.get("from_to_read"))
+        from_to_read = bool(item.get("from_to_read")) or key in to_read_books
         seen.add(key)
         cleaned_books.append(
             {
@@ -773,6 +863,7 @@ async def generate_anthropic_recommendations(
     snapshot: dict[str, Any],
     api_key: str,
     existing_books: set[tuple[str, str]],
+    to_read_books: set[tuple[str, str]] | None = None,
     debug_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     raw, response_debug = await with_retry(
@@ -782,7 +873,7 @@ async def generate_anthropic_recommendations(
     if debug_info is not None:
         debug_info.update(response_debug)
     try:
-        normalized = normalize_recommendations(raw, existing_books)
+        normalized = normalize_recommendations(raw, existing_books, to_read_books)
     except Exception as exc:  # noqa: BLE001
         raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
     normalized["model"] = ANTHROPIC_MODEL
@@ -794,6 +885,7 @@ async def generate_openai_recommendations(
     snapshot: dict[str, Any],
     api_key: str,
     existing_books: set[tuple[str, str]],
+    to_read_books: set[tuple[str, str]] | None = None,
     debug_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     raw, response_debug = await with_retry(
@@ -803,7 +895,7 @@ async def generate_openai_recommendations(
     if debug_info is not None:
         debug_info.update(response_debug)
     try:
-        normalized = normalize_recommendations(raw, existing_books)
+        normalized = normalize_recommendations(raw, existing_books, to_read_books)
     except Exception as exc:  # noqa: BLE001
         raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
     normalized["model"] = OPENAI_MODEL
@@ -815,6 +907,7 @@ async def generate_gemini_recommendations(
     snapshot: dict[str, Any],
     api_key: str,
     existing_books: set[tuple[str, str]],
+    to_read_books: set[tuple[str, str]] | None = None,
     debug_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     raw, response_debug = await with_retry(
@@ -829,7 +922,7 @@ async def generate_gemini_recommendations(
     if debug_info is not None:
         debug_info.update(response_debug)
     try:
-        normalized = normalize_recommendations(raw, existing_books)
+        normalized = normalize_recommendations(raw, existing_books, to_read_books)
     except Exception as exc:  # noqa: BLE001
         raise ProviderResponseError(str(exc), debug_info=response_debug) from exc
     normalized["model"] = GEMINI_MODEL
@@ -956,12 +1049,16 @@ async def generate_cache_payload(
     ):
         return cache_payload, True
 
-    snapshot = build_library_snapshot(books_payload)
+    recommendation_snapshot = build_recommendations_snapshot(books_payload)
     taste_profile_snapshot = build_taste_profile_snapshot(books_payload)
     all_books = {
         normalize_book_key(book.get("title", ""), book.get("author", ""))
         for shelf in ("read", "currently_reading")
         for book in books_payload.get("books", {}).get(shelf, [])
+    }
+    to_read_books = {
+        normalize_book_key(book.get("title", ""), book.get("author", ""))
+        for book in books_payload.get("books", {}).get("to_read", [])
     }
 
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
@@ -1085,9 +1182,10 @@ async def generate_cache_payload(
                 anthropic_key,
                 lambda: generate_anthropic_recommendations(
                     client,
-                    snapshot,
+                    recommendation_snapshot,
                     anthropic_key,
                     all_books,
+                    to_read_books,
                     debug_info=recommendation_debug["opus"],
                 ),
                 "ANTHROPIC_API_KEY is not set.",
@@ -1096,9 +1194,10 @@ async def generate_cache_payload(
                 openai_key,
                 lambda: generate_openai_recommendations(
                     client,
-                    snapshot,
+                    recommendation_snapshot,
                     openai_key,
                     all_books,
+                    to_read_books,
                     debug_info=recommendation_debug["gpt45"],
                 ),
                 "OPENAI_API_KEY is not set.",
@@ -1107,9 +1206,10 @@ async def generate_cache_payload(
                 gemini_key,
                 lambda: generate_gemini_recommendations(
                     client,
-                    snapshot,
+                    recommendation_snapshot,
                     gemini_key,
                     all_books,
+                    to_read_books,
                     debug_info=recommendation_debug["gemini"],
                 ),
                 "GEMINI_API_KEY or GOOGLE_API_KEY is not set.",

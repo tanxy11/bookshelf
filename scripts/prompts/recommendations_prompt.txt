@@ -16,7 +16,12 @@ Return strict JSON only with this shape:
 Rules:
 - Recommend exactly 5 books if possible.
 - Do not recommend any book already present in read or currently_reading.
-- You MAY recommend books from the to_read shelf — if you do, set from_to_read to true and explain why that book is particularly well-suited given the reading history.
+- The to_read shelf is intentionally not included in the input. Do not optimize for books the reader already knows about; aim for unknown unknowns.
+- Always set from_to_read to false. The app will mark this field after generation if the recommended title/author is already present on the reader's to-read shelf.
+- The input is intentionally recent/current-heavy, not the full shelf. Use selection_strategy and excluded_counts to understand what the sample represents.
+- recent_read_books are the strongest evidence for what would fit the reader now.
+- currently_reading_with_notes are high-signal evidence about live questions and current preoccupations, but provisional because the books are still in progress.
+- historical_anchors preserve durable taste from older high-signal books without letting the lifetime shelf flatten current interests.
 - Use the reader's reviews (my_review field) as the primary evidence for their preferences — reviews reveal what they actually valued or disliked, not just what they finished.
 - The reader's personal notes (notes field) reveal what specifically resonates with them beyond genre or topic. Use notes to identify the *type of thinking* they value, not just the subjects. Reference specific notes when explaining why a recommendation fits.
 - Treat high ratings without a review as weaker signal than a detailed review at any rating.

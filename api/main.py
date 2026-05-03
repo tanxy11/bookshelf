@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -16,6 +17,7 @@ from bookshelf_data import (
     BookshelfStore,
     LLM_TARGET_KEYS,
     load_env_file,
+    normalize_book_key,
     utc_now_iso,
 )
 from api.activity import router as activity_router
@@ -341,7 +343,23 @@ async def get_recommendations() -> dict:
     recommendations = store.recommendations()
     if recommendations is None:
         raise HTTPException(status_code=404, detail="Recommendations are unavailable.")
-    return recommendations
+
+    payload = deepcopy(recommendations)
+    books_payload = store.books()
+    to_read_books = {
+        normalize_book_key(book.get("title", ""), book.get("author", ""))
+        for book in books_payload.get("books", {}).get("to_read", [])
+        if isinstance(book, dict)
+    }
+    for entry in payload.values():
+        if not isinstance(entry, dict):
+            continue
+        for book in entry.get("books") or []:
+            if not isinstance(book, dict):
+                continue
+            key = normalize_book_key(book.get("title", ""), book.get("author", ""))
+            book["from_to_read"] = bool(book.get("from_to_read")) or key in to_read_books
+    return payload
 
 
 # ── CRUD endpoints ───────────────────────────────────────────────────────────

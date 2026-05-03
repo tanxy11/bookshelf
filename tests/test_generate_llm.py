@@ -142,6 +142,85 @@ class GenerateLlmTests(unittest.TestCase):
         self.assertIn("selection_strategy", snapshot)
         self.assertEqual(snapshot["excluded_counts"]["currently_reading_without_notes"], 1)
 
+    def test_recommendations_snapshot_omits_to_read_and_prioritizes_current_context(self):
+        books_payload = sample_books_payload()
+        books_payload["books"]["read"] = [
+            {
+                "title": f"Book {index:02d}",
+                "author": "Author",
+                "my_rating": 5 if index == 45 else 3,
+                "my_review": "Long review. " * (80 if index == 46 else 1),
+                "shelves": ["history"],
+                "date_read": f"2026-02-{(index % 28) + 1:02d}",
+                "date_added": f"2026-01-{(index % 28) + 1:02d}",
+                "read_events": [{"finished_on": f"2026-02-{(index % 28) + 1:02d}"}],
+                "note_count": 0,
+                "notes": [],
+            }
+            for index in range(60)
+        ]
+        books_payload["books"]["currently_reading"] = [
+            {
+                "title": f"Live Wire {index}",
+                "author": "Reader",
+                "notes": [
+                    {
+                        "id": 2,
+                        "note_type": "question",
+                        "content": f"What should come next {index}?",
+                    },
+                    {
+                        "id": 1,
+                        "note_type": "thought",
+                        "content": f"This feels urgent {index}.",
+                    },
+                ],
+                "note_count": 2,
+            }
+            for index in range(4)
+        ] + [
+            {"title": "No Notes Yet", "author": "Reader", "notes": []},
+        ]
+        books_payload["books"]["to_read"] = [
+            {"title": "Known Unknown", "author": "Future Author"},
+        ]
+
+        snapshot = generate_llm.build_recommendations_snapshot(books_payload)
+        serialized = json_dump(snapshot)
+
+        self.assertEqual(len(snapshot["recent_read_books"]), 40)
+        self.assertEqual(len(snapshot["currently_reading_with_notes"]), 3)
+        self.assertEqual(snapshot["currently_reading_with_notes"][0]["title"], "Live Wire 0")
+        self.assertEqual(
+            snapshot["excluded_counts"]["currently_reading_with_notes_not_in_snapshot"],
+            1,
+        )
+        self.assertNotIn("to_read", snapshot)
+        self.assertNotIn("Known Unknown", serialized)
+        self.assertEqual(snapshot["excluded_counts"]["to_read_books_omitted"], 1)
+
+    def test_recommendation_normalization_marks_to_read_matches_after_generation(self):
+        raw = {
+            "reasoning": "A strategy.",
+            "books": [
+                {
+                    "title": "Known Unknown",
+                    "author": "Future Author",
+                    "reason": "Specific reason.",
+                    "confidence": "high",
+                    "from_to_read": False,
+                }
+            ],
+        }
+
+        normalized = generate_llm.normalize_recommendations(
+            raw,
+            existing_books=set(),
+            to_read_books={("known unknown", "future author")},
+        )
+
+        self.assertTrue(normalized["books"][0]["from_to_read"])
+
     def test_skip_generation_when_hash_matches(self):
         books_payload = sample_books_payload()
         books_hash = compute_llm_input_hash(books_payload)
@@ -680,7 +759,7 @@ class GenerateLlmTests(unittest.TestCase):
         gemini_snapshot = gemini_mock.await_args.args[1]
         self.assertEqual(
             gemini_snapshot,
-            generate_llm.build_library_snapshot(books_payload),
+            generate_llm.build_recommendations_snapshot(books_payload),
         )
 
     def test_dry_run_skips_live_provider_calls(self):
