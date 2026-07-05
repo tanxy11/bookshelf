@@ -194,6 +194,7 @@
       font-size: 1.03rem;
       color: rgba(52, 41, 34, 0.96);
     }
+    .review-text img { max-width: 100%; height: auto; border-radius: 6px; }
     .review-text p { margin: 0 0 0.3em 0; }
     .review-text p:last-child { margin-bottom: 0; }
     .review-text blockquote {
@@ -589,7 +590,8 @@ function renderReview(book) {
   if (!review) return;
   if (typeof marked !== 'undefined') {
     marked.use({ breaks: true });
-    document.getElementById('review-text').innerHTML = marked.parse(review);
+    const source = apiBase ? review.replace(/(\]\(|src=["'])\/uploads\//g, `$1${apiBase}/uploads/`) : review;
+    document.getElementById('review-text').innerHTML = marked.parse(source);
   } else {
     document.getElementById('review-text').textContent = review;
   }

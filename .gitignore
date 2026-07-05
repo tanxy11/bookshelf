@@ -2,6 +2,7 @@
 data/goodreads_library_export.csv
 
 # Generated files
+data/uploads/
 data/books.json
 data/llm_cache.json
 data/llm_cache.staging.json

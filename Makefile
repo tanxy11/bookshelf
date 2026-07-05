@@ -18,6 +18,7 @@ FORCE_LLM ?= 0
 
 .PHONY: install parse llm llm-force llm-staging llm-staging-force build refresh-data dev \
         deploy deploy-sync restart-api restart-bot backup pull-db push-db \
+        pull-uploads push-uploads vps-install-deps \
         deploy-staging deploy-staging-sync restart-staging-api seed-staging \
         add-notes-table add-capture-table \
         bot-status bot-logs bot-restart
@@ -83,7 +84,7 @@ deploy: backup deploy-sync restart-api restart-bot
 
 deploy-sync:
 	@echo "Syncing code to $(VPS_HOST):$(VPS_PATH)"
-	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/site $(VPS_PATH)/data $(VPS_PATH)/api $(VPS_PATH)/scripts $(VPS_PATH)/deploy'
+	ssh $(VPS_HOST) 'mkdir -p $(VPS_PATH)/site $(VPS_PATH)/data $(VPS_PATH)/data/uploads $(VPS_PATH)/api $(VPS_PATH)/scripts $(VPS_PATH)/deploy && chown -R www-data:www-data $(VPS_PATH)/data/uploads'
 	rsync -avz --delete site/ $(VPS_HOST):$(VPS_PATH)/site/
 	rsync -avz api/ $(VPS_HOST):$(VPS_PATH)/api/
 	rsync -avz scripts/ $(VPS_HOST):$(VPS_PATH)/scripts/
@@ -112,7 +113,7 @@ deploy-staging: deploy-staging-sync restart-staging-api
 
 deploy-staging-sync:
 	@echo "Syncing code to $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)"
-	ssh $(STAGING_VPS_HOST) 'mkdir -p $(STAGING_VPS_PATH)/site $(STAGING_VPS_PATH)/data $(STAGING_VPS_PATH)/api $(STAGING_VPS_PATH)/scripts $(STAGING_VPS_PATH)/deploy'
+	ssh $(STAGING_VPS_HOST) 'mkdir -p $(STAGING_VPS_PATH)/site $(STAGING_VPS_PATH)/data $(STAGING_VPS_PATH)/data/uploads $(STAGING_VPS_PATH)/api $(STAGING_VPS_PATH)/scripts $(STAGING_VPS_PATH)/deploy && chown -R www-data:www-data $(STAGING_VPS_PATH)/data/uploads'
 	rsync -avz --delete site/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/site/
 	rsync -avz api/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/api/
 	rsync -avz scripts/ $(STAGING_VPS_HOST):$(STAGING_VPS_PATH)/scripts/
@@ -137,6 +138,19 @@ push-db:
 	scp data/bookshelf.db $(VPS_HOST):$(VPS_PATH)/data/bookshelf.db
 	@echo "Pushed. Restart the API to pick up the new database:"
 	@echo "  make restart-api"
+
+pull-uploads:
+	@echo "Pulling uploaded images from production…"
+	rsync -avz $(VPS_HOST):$(VPS_PATH)/data/uploads/ data/uploads/
+	@echo "Done. Local data/uploads updated."
+
+push-uploads:
+	@echo "Pushing local uploaded images to production…"
+	rsync -avz data/uploads/ $(VPS_HOST):$(VPS_PATH)/data/uploads/
+	@echo "Done."
+
+vps-install-deps:
+	ssh $(VPS_HOST) '$(VPS_PATH)/.venv/bin/pip install -r $(VPS_PATH)/api/requirements.txt'
 
 seed-staging:
 	@echo "Copying production DB to staging on VPS…"
