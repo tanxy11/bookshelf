@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
@@ -25,6 +26,7 @@ from api.auth import verify_auth
 from api.capture import router as capture_router
 from api.notes import router as notes_router
 from api.suggestions import router as suggestions_router
+from api.uploads import router as uploads_router
 
 load_env_file(ROOT_DIR / ".env")
 
@@ -32,6 +34,7 @@ DB_PATH = os.getenv("DB_PATH", "").strip()
 BOOKS_DATA_FILE = Path(os.getenv("BOOKS_DATA", "data/books.json"))
 LLM_CACHE_FILE = Path(os.getenv("LLM_CACHE_DATA", "data/llm_cache.json"))
 ENVIRONMENT = (os.getenv("ENVIRONMENT", "production") or "production").strip()
+UPLOADS_DIR = Path(os.getenv("UPLOADS_DIR", "") or (ROOT_DIR / "data" / "uploads"))
 configured_origins = [
     origin.strip()
     for origin in os.getenv(
@@ -59,12 +62,16 @@ app.include_router(activity_router)
 app.include_router(capture_router)
 app.include_router(notes_router)
 app.include_router(suggestions_router)
+app.include_router(uploads_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 
 # ── Auth helper ──────────────────────────────────────────────────────────────

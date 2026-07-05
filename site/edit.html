@@ -330,6 +330,39 @@
       color: var(--muted);
     }
 
+    .image-tips {
+      margin-top: 14px;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.55);
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .image-tips > summary {
+      cursor: pointer;
+      color: var(--accent-deep);
+      font-weight: 600;
+      list-style: none;
+    }
+    .image-tips > summary::-webkit-details-marker { display: none; }
+    .image-tips > summary::before {
+      content: "▸";
+      display: inline-block;
+      margin-right: 6px;
+      transition: transform 0.15s ease;
+    }
+    .image-tips[open] > summary::before { transform: rotate(90deg); }
+    .image-tips p { margin: 10px 0 6px; }
+    .image-tips ul { margin: 6px 0 0; padding-left: 18px; }
+    .image-tips li { margin: 4px 0; line-height: 1.55; }
+    .image-tips code {
+      background: rgba(122, 92, 62, 0.08);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+
     .mode-toggle {
       display: inline-flex;
       gap: 6px;
@@ -381,6 +414,11 @@
       line-height: 1.72;
       color: var(--text);
       outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .review-editor.drag-over {
+      border-color: rgba(122, 92, 62, 0.9);
+      box-shadow: 0 0 0 3px rgba(122, 92, 62, 0.15), inset 0 1px 0 rgba(255,255,255,0.85);
     }
 
     .review-preview {
@@ -873,6 +911,7 @@
       flex-shrink: 0;
     }
 
+    .review-preview img { max-width: 100%; height: auto; border-radius: 6px; }
     .review-preview p { margin: 0 0 0.45em 0; }
     .review-preview p:last-child { margin-bottom: 0; }
     .review-preview blockquote {
@@ -1021,6 +1060,19 @@
           ></textarea>
           <div id="review-preview" class="review-preview hidden" aria-live="polite"></div>
         </div>
+
+        <details class="image-tips">
+          <summary>Editor tips</summary>
+          <p>Paste (Cmd+V) or drop an image onto the editor to upload it. Default insertion is <code>&lt;img src="…" width="400"&gt;</code> — tweak the number to resize.</p>
+          <ul>
+            <li><code>&lt;img src="/uploads/xxx.webp" width="300"&gt;</code> — fixed pixel width</li>
+            <li><code>&lt;img src="/uploads/xxx.webp" width="50%"&gt;</code> — half the column width</li>
+            <li><code>&lt;img src="/uploads/xxx.webp" style="max-width:400px"&gt;</code> — cap without forcing</li>
+            <li><code>&lt;img src="/uploads/xxx.webp" width="300" align="right"&gt;</code> — right-float, text wraps</li>
+            <li><code>&lt;figure&gt;&lt;img src="/uploads/xxx.webp" width="500"&gt;&lt;figcaption&gt;Caption&lt;/figcaption&gt;&lt;/figure&gt;</code></li>
+            <li>Markdown <code>![alt](/uploads/xxx.webp)</code> also works — renders at column width.</li>
+          </ul>
+        </details>
       </section>
 
       <section class="panel meta-panel">
@@ -1526,7 +1578,8 @@
       }
       configureMarked();
       if (typeof marked !== 'undefined') {
-        preview.innerHTML = marked.parse(review);
+        const source = apiBase ? review.replace(/(\]\(|src=["'])\/uploads\//g, `$1${apiBase}/uploads/`) : review;
+        preview.innerHTML = marked.parse(source);
       } else {
         preview.textContent = review;
       }
@@ -1922,6 +1975,88 @@
       renderHero();
       updateShelfPriority();
       updateDirtyState();
+    });
+
+    async function uploadImage(file) {
+      const token = getToken();
+      if (!token) throw new Error('Not logged in. Go back and log in first.');
+      const form = new FormData();
+      form.append('file', file, file.name || 'pasted-image.png');
+      const resp = await fetch(`${apiBase}/api/uploads`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: form,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.detail || 'Image upload failed.');
+      return data.url;
+    }
+
+    let imageUploadCounter = 0;
+
+    function collectImageFiles(dataTransfer) {
+      const files = [];
+      const seen = new Set();
+      const push = f => {
+        if (!f) return;
+        const key = `${f.name}|${f.size}|${f.lastModified}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        if ((f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|avif|heic|heif)$/i.test(f.name || '')) {
+          files.push(f);
+        }
+      };
+      for (const it of (dataTransfer?.items || [])) {
+        if (it.kind === 'file') push(it.getAsFile());
+      }
+      for (const f of (dataTransfer?.files || [])) push(f);
+      return files;
+    }
+
+    async function insertUploadedImage(ta, file) {
+      const placeholder = `![uploading-${++imageUploadCounter}…]()`;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      ta.value = ta.value.slice(0, start) + placeholder + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = start + placeholder.length;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      try {
+        const url = await uploadImage(file);
+        ta.value = ta.value.replace(placeholder, `<img src="${url}" width="400">`);
+      } catch (err) {
+        ta.value = ta.value.replace(placeholder, '');
+        setMessage(err.message, 'error');
+      }
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    const reviewTextarea = document.getElementById('my_review');
+
+    reviewTextarea.addEventListener('paste', async e => {
+      const files = collectImageFiles(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      for (const file of files) await insertUploadedImage(reviewTextarea, file);
+    });
+
+    reviewTextarea.addEventListener('dragover', e => {
+      if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      reviewTextarea.classList.add('drag-over');
+    });
+
+    reviewTextarea.addEventListener('dragleave', () => {
+      reviewTextarea.classList.remove('drag-over');
+    });
+
+    reviewTextarea.addEventListener('drop', async e => {
+      const files = collectImageFiles(e.dataTransfer);
+      reviewTextarea.classList.remove('drag-over');
+      if (!files.length) return;
+      e.preventDefault();
+      reviewTextarea.focus();
+      for (const file of files) await insertUploadedImage(reviewTextarea, file);
     });
 
     window.addEventListener('beforeunload', e => {

@@ -296,5 +296,98 @@ class SqliteApiTests(unittest.TestCase):
         self.assertEqual(invalid_response.status_code, 422)
 
 
+try:
+    from PIL import Image
+except ModuleNotFoundError:  # pragma: no cover - local env may not have project deps installed
+    Image = None
+
+
+@unittest.skipIf(TestClient is None, "fastapi is not installed")
+@unittest.skipIf(Image is None, "Pillow is not installed")
+class UploadApiTests(unittest.TestCase):
+    def setUp(self):
+        import io
+        import re
+
+        self.io = io
+        self.re = re
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.uploads_dir = Path(self.tempdir.name) / "uploads"
+        books_path = Path(self.tempdir.name) / "books.json"
+        llm_path = Path(self.tempdir.name) / "llm_cache.json"
+        books_path.write_text(
+            json.dumps({"generated_at": "2026-03-22T12:00:00Z", "books": {"read": [], "currently_reading": [], "to_read": []}, "stats": {}}),
+            encoding="utf-8",
+        )
+        llm_path.write_text("{}", encoding="utf-8")
+
+        self.original_env = os.environ.copy()
+        os.environ["DB_PATH"] = ""
+        os.environ["BOOKSHELF_AUTH_TOKEN"] = "test-token"
+        os.environ["BOOKS_DATA"] = str(books_path)
+        os.environ["LLM_CACHE_DATA"] = str(llm_path)
+        os.environ["UPLOADS_DIR"] = str(self.uploads_dir)
+
+        if "api.main" in sys.modules:
+            self.api_main = importlib.reload(sys.modules["api.main"])
+        else:
+            self.api_main = importlib.import_module("api.main")
+
+        self.client = TestClient(self.api_main.app)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.original_env)
+        self.tempdir.cleanup()
+
+    def _png_bytes(self, width, height):
+        buf = self.io.BytesIO()
+        Image.new("RGB", (width, height), (200, 120, 40)).save(buf, "PNG")
+        buf.seek(0)
+        return buf
+
+    def _post(self, content, headers=None, filename="test.png", content_type="image/png"):
+        return self.client.post(
+            "/api/uploads",
+            headers=headers if headers is not None else {"Authorization": "Bearer test-token"},
+            files={"file": (filename, content, content_type)},
+        )
+
+    def test_upload_requires_auth(self):
+        no_token = self._post(self._png_bytes(10, 10), headers={})
+        bad_token = self._post(self._png_bytes(10, 10), headers={"Authorization": "Bearer wrong"})
+        self.assertEqual(no_token.status_code, 401)
+        self.assertEqual(bad_token.status_code, 401)
+
+    def test_upload_resizes_and_converts_to_webp(self):
+        response = self._post(self._png_bytes(2400, 1200))
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertRegex(payload["url"], r"^/uploads/[0-9a-f]{32}\.webp$")
+
+        saved = self.uploads_dir / payload["filename"]
+        self.assertTrue(saved.exists())
+        with Image.open(saved) as img:
+            self.assertEqual(img.format, "WEBP")
+            self.assertLessEqual(img.width, 1600)
+
+    def test_upload_rejects_non_image(self):
+        response = self._post(self.io.BytesIO(b"not an image at all"))
+        self.assertEqual(response.status_code, 422)
+
+    def test_uploaded_file_is_served(self):
+        response = self._post(self._png_bytes(20, 20))
+        self.assertEqual(response.status_code, 201)
+        served = self.client.get(response.json()["url"])
+        self.assertEqual(served.status_code, 200)
+        self.assertEqual(served.headers["content-type"], "image/webp")
+
+    def test_small_image_not_upscaled(self):
+        response = self._post(self._png_bytes(300, 200))
+        self.assertEqual(response.status_code, 201)
+        with Image.open(self.uploads_dir / response.json()["filename"]) as img:
+            self.assertEqual(img.width, 300)
+
+
 if __name__ == "__main__":
     unittest.main()
